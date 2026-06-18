@@ -12,6 +12,22 @@ R = TypeVar("R")
 
 BOOL_CHOICE = click.Choice(["true", "false"], case_sensitive=False)
 
+MODEL_IDS = (
+    "dgrauet/ltx-2.3-mlx-q4",
+    "dgrauet/ltx-2.3-mlx-q8",
+    "dgrauet/ltx-2.3-mlx",
+)
+MODEL_CHOICE = click.Choice(MODEL_IDS, case_sensitive=False)
+
+MODEL_OPTION = click.option(
+    "--model",
+    "-m",
+    type=MODEL_CHOICE,
+    default=DEFAULT_MODEL,
+    show_default=True,
+    help="Model weights (Hugging Face repo)",
+)
+
 # Bare flags like `--distilled` are expanded to `--distilled true` before Click parses argv.
 BOOL_FLAGS = frozenset(
     {
@@ -48,7 +64,7 @@ def _apply_options(fn: Callable[P, R], options: list[Callable[[Callable], Callab
 BASE_OPTIONS = [
     click.option("--prompt", "-p", required=True, help="Text prompt"),
     click.option("--output", "-o", required=True, type=click.Path(), help="Output video path (.mp4)"),
-    click.option("--model", "-m", default=DEFAULT_MODEL, show_default=True, help="Model weights (HF repo or path)"),
+    MODEL_OPTION,
     click.option("--gemma", default=DEFAULT_GEMMA, show_default=True, help="Gemma model for text encoding"),
     click.option("--seed", "-s", default=-1, show_default=True, type=int, help="Random seed (-1 = random)"),
     tui_bool_option("--quiet", "-q", help="Suppress progress output"),
@@ -60,8 +76,7 @@ GENERATION_OPTIONS = [
     click.option("--width", "-W", default=704, show_default=True, type=int, help="Video width"),
     click.option("--frames", "-f", default=97, show_default=True, type=int, help="Number of frames"),
     click.option(
-        "--frame-rate",
-        required=True,
+        "--frame-rate", default=24, show_default=True,
         type=float,
         help="Output frame rate (LTX-2.3 was trained at 24 fps)",
     ),

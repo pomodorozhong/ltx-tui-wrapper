@@ -7,7 +7,6 @@ import sys
 import click
 from ltx_pipelines_mlx.cli import (
     DEFAULT_GEMMA,
-    DEFAULT_MODEL,
     _cmd_a2v,
     _cmd_enhance,
     _cmd_extend,
@@ -28,6 +27,7 @@ from ltx_tui_wrapper.options import (
     BOOL_FLAGS,
     IMAGE_OPTION,
     LORA_OPTION,
+    MODEL_OPTION,
     VIDEO_CONDITIONING_OPTION,
     tui_bool_option,
     with_base_options,
@@ -207,7 +207,7 @@ def enhance(**kwargs) -> None:
 
 
 @cli.command(help="Show model info and memory estimate")
-@click.option("--model", "-m", default=DEFAULT_MODEL, show_default=True)
+@MODEL_OPTION
 def info(**kwargs) -> None:
     invoke(_cmd_info, **kwargs)
 
@@ -222,7 +222,7 @@ def train(**kwargs) -> None:
 @cli.command(help="Preprocess videos into latents + conditions for training")
 @click.option("--videos", "-v", required=True, type=click.Path(), help="Directory of video files")
 @click.option("--output", "-o", required=True, type=click.Path(), help="Output directory")
-@click.option("--model", "-m", default=DEFAULT_MODEL, show_default=True)
+@MODEL_OPTION
 @click.option("--gemma", default=DEFAULT_GEMMA, show_default=True)
 @click.option("--height", "-H", default=None, type=int, help="Resize height")
 @click.option("--width", "-W", default=None, type=int, help="Resize width")
