@@ -1,0 +1,14 @@
+[project]
+name = "ltx-tui-wrapper"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "ltx-core-mlx",
+    "ltx-pipelines-mlx",
+]
+
+[tool.uv.sources]
+ltx-core-mlx = { git = "https://github.com/dgrauet/ltx-2-mlx", subdirectory = "packages/ltx-core-mlx" }
+ltx-pipelines-mlx = { git = "https://github.com/dgrauet/ltx-2-mlx", subdirectory = "packages/ltx-pipelines-mlx" }
