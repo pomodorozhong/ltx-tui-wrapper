@@ -1,5 +1,7 @@
 def main():
-    print("Hello from ltx-tui-wrapper!")
+    from ltx_tui_wrapper.cli import main as cli_main
+
+    cli_main()
 
 
 if __name__ == "__main__":
