@@ -31,10 +31,12 @@ def main() -> None:
         help="Pre-fill the reference image path",
     )
     args = parser.parse_args()
-    run_generate_tui(
-        prompt=args.prompt,
-        output=args.output,
-        image=args.image,
+    raise SystemExit(
+        run_generate_tui(
+            prompt=args.prompt,
+            output=args.output,
+            image=args.image,
+        )
     )
 
 

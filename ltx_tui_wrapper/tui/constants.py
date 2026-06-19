@@ -85,44 +85,8 @@ Collapsible {
     background: $surface;
     color: $text;
 }
-#run-panel {
-    display: none;
-    height: auto;
-    margin: 0 1;
-    padding: 1;
-    border: solid $primary;
-    background: $surface;
-}
-#run-panel.visible {
-    display: block;
-}
-#run-header.finished #run-spinner {
-    display: none;
-}
-#run-output {
-    height: 15;
-    margin-top: 1;
-}
-.run-progress-row {
-    height: auto;
-    align: left middle;
-}
-#run-spinner {
-    width: auto;
-    height: 3;
-    min-height: 3;
-    margin-right: 1;
-}
-.run-progress-text {
-    height: auto;
-    width: 1fr;
-}
-#run-message {
-    text-style: bold;
-}
-#run-timer {
-    color: $accent;
-    margin-top: 1;
+#run-hint {
+    margin: 0 1 1 1;
 }
 #status {
     height: auto;

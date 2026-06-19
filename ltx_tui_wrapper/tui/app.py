@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Callable
 from pathlib import Path
 
 from textual import on, work
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import (
     Button,
     Checkbox,
@@ -17,15 +15,14 @@ from textual.widgets import (
     Header,
     Input,
     Label,
-    LoadingIndicator,
-    RichLog,
     Select,
     Static,
     TextArea,
 )
 
+from ltx_tui_wrapper.last_run import load_last_run, save_last_run
 from ltx_tui_wrapper.options import GenerateOptions
-from ltx_tui_wrapper.parsing import GenerateParseError, format_command, invoke
+from ltx_tui_wrapper.parsing import build_command_argv, format_command
 from ltx_tui_wrapper.tui.constants import (
     APP_CSS,
     FRAME_RATE_PRESETS,
@@ -36,18 +33,8 @@ from ltx_tui_wrapper.tui.constants import (
     RESOLUTION_PRESETS,
 )
 from ltx_tui_wrapper.tui.form import GenerateForm
-from ltx_tui_wrapper.tui.run_output import capture_stdio
-from ltx_tui_wrapper.tui.run_progress import RunProgressController, format_elapsed
 from ltx_tui_wrapper.tui.screens import FilePickScreen
 from ltx_tui_wrapper.tui.validator import GenerateFormValidator
-
-GenerateRunner = Callable[[GenerateOptions], None]
-
-
-def _default_runner(options: GenerateOptions) -> None:
-    from ltx_pipelines_mlx.cli import _cmd_generate
-
-    invoke(_cmd_generate, **options.to_kwargs())
 
 
 class GenerateApp(App[None]):
@@ -67,16 +54,20 @@ class GenerateApp(App[None]):
         initial_prompt: str | None = None,
         initial_output: Path | None = None,
         initial_image: Path | None = None,
-        runner: GenerateRunner | None = None,
     ) -> None:
         super().__init__()
         self._initial_prompt = initial_prompt
         self._initial_output = initial_output
         self._initial_image = initial_image
-        self._runner = runner or _default_runner
         self._form = GenerateForm(self)
         self._validator = GenerateFormValidator(self._form)
-        self._progress = RunProgressController(self)
+        self._last_run_options: GenerateOptions | None = None
+        self._run_command: list[str] | None = None
+
+    @property
+    def run_command(self) -> list[str] | None:
+        """Command to run after the TUI exits, if the user pressed Run."""
+        return self._run_command
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -204,22 +195,15 @@ class GenerateApp(App[None]):
                     yield Input(value="2", id="tile-overlap", placeholder="overlap")
 
         yield Static("", id="command-preview")
-        with Container(id="run-panel"):
-            with Horizontal(classes="run-progress-row", id="run-header"):
-                yield LoadingIndicator(id="run-spinner")
-                with Vertical(classes="run-progress-text"):
-                    yield Static("Generating video…", id="run-message")
-                    yield Static("Elapsed: 0s", id="run-timer")
-            yield RichLog(
-                id="run-output",
-                max_lines=1000,
-                wrap=True,
-                highlight=False,
-                markup=False,
-            )
+        yield Static(
+            "Run closes this TUI and executes the command in your terminal.",
+            classes="field-hint",
+            id="run-hint",
+        )
         yield Static("", id="status")
         with Horizontal(id="action-row"):
             yield Button("Run", variant="primary", id="run")
+            yield Button("Apply last run", id="apply-last", disabled=True)
             yield Button("Quit", id="quit")
         yield Footer()
 
@@ -232,11 +216,17 @@ class GenerateApp(App[None]):
             self.query_one("#image-path", Input).value = str(self._initial_image)
         self._form.sync_custom_visibility("#frame-rate-preset", "#frame-rate")
         self._form.sync_resolution_visibility()
-        self._progress.on_mount()
+        self._last_run_options = load_last_run()
+        self._set_last_run_available(self._last_run_options is not None)
         self._refresh_command_preview()
 
-    def _append_run_output(self, line: str) -> None:
-        self.query_one("#run-output", RichLog).write(line)
+    def _set_last_run_available(self, available: bool) -> None:
+        self.query_one("#apply-last", Button).disabled = not available
+
+    def _remember_last_run(self, options: GenerateOptions) -> None:
+        self._last_run_options = options
+        save_last_run(options)
+        self._set_last_run_available(True)
 
     def _set_status(self, message: str) -> None:
         self.query_one("#status", Static).update(message)
@@ -318,6 +308,17 @@ class GenerateApp(App[None]):
             self._form.browse_start_dir("#image-path"),
         )
 
+    @on(Button.Pressed, "#apply-last")
+    def apply_last_pressed(self) -> None:
+        if self._last_run_options is None:
+            return
+        self._clear_validation_highlights()
+        self._form.apply(self._last_run_options)
+        self._form.sync_custom_visibility("#frame-rate-preset", "#frame-rate")
+        self._form.sync_resolution_visibility()
+        self._refresh_command_preview()
+        self._set_status("Applied settings from last run.")
+
     @on(Button.Pressed, "#quit")
     def quit_pressed(self) -> None:
         self.exit()
@@ -339,48 +340,10 @@ class GenerateApp(App[None]):
             return
 
         self._clear_validation_highlights()
-        self.query_one("#run", Button).disabled = True
-        self.query_one("#quit", Button).disabled = True
-        self._set_status("")
         options = self._form.collect()
-        self.query_one("#command-preview", Static).update(format_command(options))
-        self._progress.clear_output()
-        self._progress.show()
-        self._run_job_worker(options)
-
-    @work(thread=True, exclusive=True)
-    def _run_job_worker(self, options: GenerateOptions) -> None:
-        append = lambda line: self.call_from_thread(self._append_run_output, line)
-        try:
-            with capture_stdio(append):
-                self._runner(options)
-        except SystemExit as exc:
-            message = str(exc.code) if exc.code not in (None, 0, 1) else "Generation failed."
-            if exc.code == 0:
-                self.call_from_thread(self._on_run_done, options.output)
-                return
-            self.call_from_thread(self._on_run_failed, message)
-            return
-        except (GenerateParseError, ValueError, OSError) as exc:
-            self.call_from_thread(self._on_run_failed, str(exc))
-            return
-        self.call_from_thread(self._on_run_done, options.output)
-
-    def _finish_run(self, message: str) -> None:
-        elapsed = self._progress.capture_elapsed()
-        self._progress.finish()
-        if elapsed is not None:
-            message = f"{message} in {format_elapsed(elapsed)}"
-        self.query_one("#run-message", Static).update(message)
-        self._set_status(message)
-        self.query_one("#run", Button).disabled = False
-        self.query_one("#quit", Button).disabled = False
-
-    def _on_run_done(self, output_path: str) -> None:
-        self._finish_run(f"Saved {output_path}")
-
-    def _on_run_failed(self, message: str) -> None:
-        self._finish_run(message)
+        self._remember_last_run(options)
+        self._run_command = build_command_argv(options)
+        self.exit()
 
 
 def run_generate_tui(
@@ -388,13 +351,19 @@ def run_generate_tui(
     prompt: str | None = None,
     output: Path | None = None,
     image: Path | None = None,
-    runner: GenerateRunner | None = None,
-) -> None:
-    """Launch the generate command builder TUI."""
+) -> int:
+    """Launch the generate command builder TUI.
+
+    Returns the exit code of the built command, or ``0`` if the user quit without running.
+    """
+    from ltx_tui_wrapper.runner import execute_command
+
     app = GenerateApp(
         initial_prompt=prompt,
         initial_output=output,
         initial_image=image,
-        runner=runner,
     )
     app.run()
+    if app.run_command is None:
+        return 0
+    return execute_command(app.run_command)
