@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from textual import on, work
@@ -20,6 +21,12 @@ from textual.widgets import (
     TextArea,
 )
 
+from ltx_tui_wrapper.file_dialog import (
+    IMAGE_EXTENSIONS,
+    native_file_dialog_available,
+    pick_open_file,
+    pick_save_file,
+)
 from ltx_tui_wrapper.last_run import load_last_run, save_last_run
 from ltx_tui_wrapper.options import GenerateOptions
 from ltx_tui_wrapper.parsing import build_command_argv, format_command
@@ -282,16 +289,29 @@ class GenerateApp(App[None]):
     ) -> None:
         if save:
             start_dir, default_name = self._form.browse_save_defaults()
-            picked = await self.push_screen_wait(FilePickScreen(start=start_dir))
+            picked = await asyncio.to_thread(
+                pick_save_file,
+                title="Save output as",
+                start=start_dir,
+                default_name=default_name,
+            )
+        else:
+            picked = await asyncio.to_thread(
+                pick_open_file,
+                title="Select image file",
+                start=start,
+                extensions=IMAGE_EXTENSIONS,
+            )
+        if picked is None:
+            if native_file_dialog_available():
+                return
+            picked = await self.push_screen_wait(FilePickScreen(start=start))
             if picked is None:
                 return
-            if picked.is_dir():
+            if save and picked.is_dir():
+                _, default_name = self._form.browse_save_defaults()
                 picked = picked / default_name
-            self.query_one(input_id, Input).value = str(picked)
-        else:
-            picked = await self.push_screen_wait(FilePickScreen(start=start))
-            if picked is not None:
-                self.query_one(input_id, Input).value = str(picked)
+        self.query_one(input_id, Input).value = str(picked)
 
     @on(Button.Pressed, "#browse-output")
     def browse_output(self) -> None:
