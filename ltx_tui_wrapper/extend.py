@@ -236,15 +236,13 @@ def extend_video(
         with prevent_sleep():
             while total_duration < target_duration:
                 segment_index += 1
-                if segment_index == 1:
+                run_options = replace(
+                    current_options,
+                    output=timestamped_output_path(base_options.output),
+                )
+                if segment_index > 1:
                     run_options = replace(
-                        current_options,
-                        output=timestamped_output_path(current_options.output),
-                    )
-                else:
-                    run_options = replace(
-                        current_options,
-                        output=timestamped_output_path(current_options.output),
+                        run_options,
                         image_specs=(str(frame_path),),
                     )
 
