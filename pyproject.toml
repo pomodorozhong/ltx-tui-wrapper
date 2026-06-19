@@ -12,6 +12,7 @@ dependencies = [
 
 [project.scripts]
 ltx-tui = "ltx_tui_wrapper.cli:main"
+ltx-tui-batch = "ltx_tui_wrapper.batch_cli:main"
 
 [tool.uv]
 package = true
