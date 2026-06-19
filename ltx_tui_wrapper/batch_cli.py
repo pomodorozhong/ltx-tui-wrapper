@@ -10,7 +10,7 @@ from dataclasses import replace
 from ltx_tui_wrapper.last_run import load_last_run
 from ltx_tui_wrapper.output_paths import timestamped_output_path
 from ltx_tui_wrapper.parsing import build_command_argv, format_command
-from ltx_tui_wrapper.runner import execute_command
+from ltx_tui_wrapper.runner import execute_command, prevent_sleep
 
 
 def format_elapsed(seconds: float) -> str:
@@ -36,30 +36,31 @@ def run_batch(*, count: int, continue_on_error: bool = False) -> int:
 
     failures = 0
     batch_started = time.perf_counter()
-    for index in range(1, count + 1):
-        run_options = replace(
-            base_options,
-            output=timestamped_output_path(base_options.output),
-        )
-        argv = build_command_argv(run_options)
-        print(f"[{index}/{count}] {format_command(run_options)}", flush=True)
-        run_started = time.perf_counter()
-        exit_code = execute_command(argv, echo=False)
-        elapsed = time.perf_counter() - run_started
-        if exit_code != 0:
-            failures += 1
-            print(
-                f"Run {index} failed with exit code {exit_code} "
-                f"after {format_elapsed(elapsed)}.",
-                file=sys.stderr,
+    with prevent_sleep():
+        for index in range(1, count + 1):
+            run_options = replace(
+                base_options,
+                output=timestamped_output_path(base_options.output),
             )
-            if not continue_on_error:
-                return exit_code
-        else:
-            print(
-                f"Run {index} finished in {format_elapsed(elapsed)} -> {run_options.output}",
-                flush=True,
-            )
+            argv = build_command_argv(run_options)
+            print(f"[{index}/{count}] {format_command(run_options)}", flush=True)
+            run_started = time.perf_counter()
+            exit_code = execute_command(argv, echo=False)
+            elapsed = time.perf_counter() - run_started
+            if exit_code != 0:
+                failures += 1
+                print(
+                    f"Run {index} failed with exit code {exit_code} "
+                    f"after {format_elapsed(elapsed)}.",
+                    file=sys.stderr,
+                )
+                if not continue_on_error:
+                    return exit_code
+            else:
+                print(
+                    f"Run {index} finished in {format_elapsed(elapsed)} -> {run_options.output}",
+                    flush=True,
+                )
 
     total_elapsed = time.perf_counter() - batch_started
     succeeded = count - failures
