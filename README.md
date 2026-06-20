@@ -25,6 +25,35 @@ uv run ltx-tui -p "a sunset over the ocean" -o sunset.mp4
 uv run ltx-tui -p "animate this photo" -i photo.jpg -o anim.mp4
 ```
 
+### Batch generation
+
+Re-run the last successful generate settings multiple times. Each output gets a timestamp suffix (e.g. `sunset_20250619_143022.mp4`). Requires at least one prior run from `ltx-tui`.
+
+```bash
+# Generate 5 videos with the same settings
+uv run ltx-tui-batch -n 5
+
+# Keep going if one run fails
+uv run ltx-tui-batch -n 10 --continue-on-error
+```
+
+### Extend a video
+
+Chain I2V segments from the last generated video until the combined length exceeds a target duration. Uses each segment's last frame as the next input. Requires `ffmpeg` and `ffprobe` on PATH.
+
+```bash
+# Extend to over 60 seconds (default output: <last-output>_extended.mp4)
+uv run ltx-tui-extend -l 60
+
+# Target 90 seconds with a custom output path
+uv run ltx-tui-extend -l 90s -o rain_extended.mp4
+
+# Retry failed segments up to 3 times; keep intermediate segment files
+uv run ltx-tui-extend -l 1.5m -r 3 --keep-segments
+```
+
+Duration accepts seconds (`60`), suffixed seconds (`90s`), or minutes (`1.5m`).
+
 ## Generate options
 
 The TUI covers the full `ltx-2-mlx generate` surface:
