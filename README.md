@@ -54,6 +54,20 @@ uv run ltx-tui-extend -l 1.5m -r 3 --keep-segments
 
 Duration accepts seconds (`60`), suffixed seconds (`90s`), or minutes (`1.5m`).
 
+### Upscale to 1080p
+
+Scale a video to strict 1920×1080 with FFmpeg Lanczos, preserving aspect ratio and padding to 16:9. Requires `ffmpeg` and `ffprobe` on PATH.
+
+```bash
+# Upscale last generated video (default output: <last-output>_1080p.mp4)
+uv run ltx-tui-upscale
+
+# Custom input/output
+uv run ltx-tui-upscale -i rain.mp4 -o rain_1080p.mp4
+```
+
+This uses traditional interpolation, not AI upscaling — it is fast and temporally stable, but cannot reconstruct detail missing from the source.
+
 ## Generate options
 
 The TUI covers the full `ltx-2-mlx generate` surface:
