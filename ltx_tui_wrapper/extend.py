@@ -17,6 +17,7 @@ from ltx_tui_wrapper.last_run import load_last_run
 from ltx_tui_wrapper.options import GenerateOptions
 from ltx_tui_wrapper.output_paths import timestamped_output_path
 from ltx_tui_wrapper.parsing import build_command_argv, format_command
+from ltx_tui_wrapper.progress import print_status_band
 from ltx_tui_wrapper.runner import execute_command, prevent_sleep
 
 _DURATION_RE = re.compile(
@@ -173,33 +174,25 @@ def run_with_retries(
     *,
     max_retries: int,
     label: str,
-) -> int:
+) -> tuple[int, float]:
     """Run *argv*, retrying up to *max_retries* times on non-zero exit."""
     attempts = max(1, max_retries)
+    exit_code = 1
+    elapsed = 0.0
     for attempt in range(1, attempts + 1):
         started = time.perf_counter()
         exit_code = execute_command(argv, echo=False)
         elapsed = time.perf_counter() - started
         if exit_code == 0:
-            print(f"{label} finished in {format_elapsed(elapsed)}.", flush=True)
-            return 0
+            return 0, elapsed
         if attempt < attempts:
-            print(
+            print_status_band(
                 f"{label} failed with exit code {exit_code} "
                 f"after {format_elapsed(elapsed)}; "
                 f"retrying ({attempt}/{attempts})…",
-                file=sys.stderr,
-                flush=True,
+                success=False,
             )
-        else:
-            print(
-                f"{label} failed with exit code {exit_code} "
-                f"after {format_elapsed(elapsed)} "
-                f"({attempts} attempt(s)).",
-                file=sys.stderr,
-                flush=True,
-            )
-    return exit_code
+    return exit_code, elapsed
 
 
 def extend_video(
@@ -256,29 +249,36 @@ def extend_video(
                 argv = build_command_argv(run_options)
                 label = f"Segment {segment_index}"
                 print(f"[{label}] {format_command(run_options)}", flush=True)
-                exit_code = run_with_retries(
+                exit_code, elapsed = run_with_retries(
                     argv,
                     max_retries=max_retries,
                     label=label,
                 )
                 if exit_code != 0:
+                    attempts = max(1, max_retries)
+                    print_status_band(
+                        f"{label} failed with exit code {exit_code} "
+                        f"after {format_elapsed(elapsed)} ({attempts} attempt(s)).",
+                        success=False,
+                    )
                     return exit_code
 
                 segment_path = Path(run_options.output)
                 if not segment_path.is_file():
-                    print(
-                        f"Expected output file missing: {segment_path}",
-                        file=sys.stderr,
+                    print_status_band(
+                        f"{label} failed: expected output file missing ({segment_path}).",
+                        success=False,
                     )
                     return 1
 
                 segment_duration = probe_video_duration(segment_path)
                 segments.append(segment_path)
                 total_duration += segment_duration
-                print(
+                print_status_band(
                     f"Segment {segment_index}: {segment_duration:.2f}s "
-                    f"(total {total_duration:.2f}s / {target_duration:.1f}s).",
-                    flush=True,
+                    f"(total {total_duration:.2f}s / {target_duration:.1f}s) "
+                    f"in {format_elapsed(elapsed)}.",
+                    success=True,
                 )
 
                 if total_duration >= target_duration:
