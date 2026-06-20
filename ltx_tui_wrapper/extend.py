@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import re
 import shutil
 import subprocess
@@ -215,6 +216,12 @@ def extend_video(
             "No saved generate settings found. Run `ltx-tui` once and press Run first."
         )
 
+    if base_options.seed == -1:
+        base_options = replace(
+            base_options,
+            seed=random.randint(0, 2**31 - 1),
+        )
+
     _require_tool("ffmpeg")
     _require_tool("ffprobe")
 
@@ -227,7 +234,7 @@ def extend_video(
 
     print(
         f"Extending video to > {target_duration:.1f}s "
-        f"(retry up to {max_retries} time(s) per segment).",
+        f"(retry up to {max_retries} time(s) per segment, seed {base_options.seed}).",
         flush=True,
     )
     print(f"Working directory: {work_dir}", flush=True)
