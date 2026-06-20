@@ -5,9 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from textual.widgets import Checkbox, Input, Select
+from textual.widgets import Checkbox, Select
 
 from ltx_tui_wrapper.tui.form import GenerateForm, _frame_rate
+from ltx_tui_wrapper.tui.widgets import CopyInput
 
 
 @dataclass
@@ -33,12 +34,12 @@ class GenerateFormValidator:
         highlights: list[str] = []
         errors: list[str] = []
 
-        prompt = app.query_one("#prompt", Input).value.strip()
+        prompt = app.query_one("#prompt", CopyInput).value.strip()
         if not prompt:
             highlights.append("#prompt")
             errors.append("Prompt is required.")
 
-        output_text = app.query_one("#output-path", Input).value.strip()
+        output_text = app.query_one("#output-path", CopyInput).value.strip()
         if not output_text:
             highlights.append("#output-path")
             errors.append("Output path is required.")
@@ -52,7 +53,7 @@ class GenerateFormValidator:
             errors.append("Pipeline mode is required.")
 
         frame_rate_select = app.query_one("#frame-rate-preset", Select)
-        frame_rate_custom = app.query_one("#frame-rate", Input)
+        frame_rate_custom = app.query_one("#frame-rate", CopyInput)
         try:
             frame_rate = _frame_rate(frame_rate_select, frame_rate_custom)
             if frame_rate <= 0:
@@ -66,7 +67,7 @@ class GenerateFormValidator:
             highlights.append(widget)
             errors.append("Invalid frame rate.")
 
-        image_path = app.query_one("#image-path", Input).value.strip()
+        image_path = app.query_one("#image-path", CopyInput).value.strip()
         if image_path and not Path(image_path).is_file():
             highlights.append("#image-path")
             errors.append(f"Image not found: {image_path}")
@@ -88,7 +89,7 @@ class GenerateFormValidator:
             ("#image-crf", "image CRF", "integer"),
         ]
         for widget_id, label, _ in numeric_fields:
-            text = app.query_one(widget_id, Input).value.strip()
+            text = app.query_one(widget_id, CopyInput).value.strip()
             if not text:
                 continue
             try:

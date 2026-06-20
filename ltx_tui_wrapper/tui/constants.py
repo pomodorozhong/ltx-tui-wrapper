@@ -66,10 +66,10 @@ VerticalScroll {
     height: auto;
     margin-bottom: 1;
 }
-.field-row Input {
+.field-row CopyInput {
     width: 1fr;
 }
-Input.-invalid, Select.-invalid, TextArea.-invalid {
+CopyInput.-invalid, Select.-invalid, CopyTextArea.-invalid {
     border: tall $error;
 }
 Collapsible {
@@ -101,7 +101,7 @@ Collapsible {
 #action-row Button {
     margin-right: 1;
 }
-.resolution-row Input {
+.resolution-row CopyInput {
     width: 1fr;
 }
 .resolution-row {
@@ -122,7 +122,7 @@ FilePickScreen DirectoryTree {
     padding: 1;
     align: center middle;
 }
-TextArea {
+CopyTextArea {
     height: 3;
     margin-bottom: 1;
 }

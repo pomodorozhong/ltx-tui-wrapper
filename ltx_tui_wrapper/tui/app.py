@@ -14,11 +14,9 @@ from textual.widgets import (
     Collapsible,
     Footer,
     Header,
-    Input,
     Label,
     Select,
     Static,
-    TextArea,
 )
 
 from ltx_tui_wrapper.file_dialog import (
@@ -42,6 +40,7 @@ from ltx_tui_wrapper.tui.constants import (
 from ltx_tui_wrapper.tui.form import GenerateForm
 from ltx_tui_wrapper.tui.screens import FilePickScreen
 from ltx_tui_wrapper.tui.validator import GenerateFormValidator
+from ltx_tui_wrapper.tui.widgets import CopyInput, CopyTextArea
 
 
 class GenerateApp(App[None]):
@@ -80,14 +79,14 @@ class GenerateApp(App[None]):
         yield Header()
         with VerticalScroll():
             yield Label("Prompt", classes="field-label")
-            yield Input(
+            yield CopyInput(
                 placeholder="a sunset over the ocean",
                 id="prompt",
             )
 
             yield Label("Output video", classes="field-label")
             with Horizontal(classes="field-row"):
-                yield Input(
+                yield CopyInput(
                     placeholder="output.mp4",
                     id="output-path",
                 )
@@ -106,7 +105,7 @@ class GenerateApp(App[None]):
                 classes="field-hint",
             )
             yield Select(FRAME_RATE_PRESETS, id="frame-rate-preset", value="24")
-            yield Input(
+            yield CopyInput(
                 placeholder="e.g. 24",
                 id="frame-rate",
                 classes="hidden-custom",
@@ -116,16 +115,16 @@ class GenerateApp(App[None]):
                 yield Label("Resolution", classes="field-label")
                 yield Select(RESOLUTION_PRESETS, id="resolution-preset", value="480x704")
                 with Horizontal(classes="resolution-row"):
-                    yield Input(value="480", id="height", disabled=True)
+                    yield CopyInput(value="480", id="height", disabled=True)
                     yield Static("×", classes="field-label")
-                    yield Input(value="704", id="width", disabled=True)
+                    yield CopyInput(value="704", id="width", disabled=True)
                 yield Label("Frames", classes="field-label")
-                yield Input(value="97", id="frames")
+                yield CopyInput(value="97", id="frames")
 
             with Collapsible(title="Image-to-video (optional)", collapsed=True):
                 yield Label("Reference image", classes="field-label")
                 with Horizontal(classes="field-row"):
-                    yield Input(
+                    yield CopyInput(
                         placeholder="photo.jpg",
                         id="image-path",
                     )
@@ -136,70 +135,70 @@ class GenerateApp(App[None]):
                     classes="field-hint",
                 )
                 with Horizontal(classes="field-row"):
-                    yield Input(value="0", id="image-frame-idx", placeholder="frame idx")
-                    yield Input(value="1.0", id="image-strength", placeholder="strength")
-                    yield Input(id="image-crf", placeholder="CRF")
+                    yield CopyInput(value="0", id="image-frame-idx", placeholder="frame idx")
+                    yield CopyInput(value="1.0", id="image-strength", placeholder="strength")
+                    yield CopyInput(id="image-crf", placeholder="CRF")
                 yield Label("Additional image specs (one per line)", classes="field-label")
                 yield Static(
                     "Format: PATH or PATH FRAME_IDX STRENGTH [CRF]",
                     classes="field-hint",
                 )
-                yield TextArea(id="extra-images")
+                yield CopyTextArea(id="extra-images")
 
             with Collapsible(title="Sampler & guidance", collapsed=True):
                 yield Label("One-stage steps (--steps)", classes="field-label")
-                yield Input(placeholder="default: 8", id="steps")
+                yield CopyInput(placeholder="default: 8", id="steps")
                 yield Label("Stage 1 / stage 2 steps", classes="field-label")
                 with Horizontal(classes="field-row"):
-                    yield Input(placeholder="stage 1", id="stage1-steps")
-                    yield Input(placeholder="stage 2 (default 3)", id="stage2-steps")
+                    yield CopyInput(placeholder="stage 1", id="stage1-steps")
+                    yield CopyInput(placeholder="stage 2 (default 3)", id="stage2-steps")
                 yield Label("CFG / STG scale", classes="field-label")
                 with Horizontal(classes="field-row"):
-                    yield Input(placeholder="CFG (default 3.0)", id="cfg-scale")
-                    yield Input(placeholder="STG", id="stg-scale")
+                    yield CopyInput(placeholder="CFG (default 3.0)", id="cfg-scale")
+                    yield CopyInput(placeholder="STG", id="stg-scale")
                 yield Checkbox("Enhance prompt with Gemma", id="enhance-prompt")
 
             with Collapsible(title="Two-stage options", collapsed=True):
                 yield Label("Dev transformer", classes="field-label")
-                yield Input(
+                yield CopyInput(
                     value="transformer-dev.safetensors",
                     id="dev-transformer",
                 )
                 yield Label("Distilled LoRA", classes="field-label")
-                yield Input(
+                yield CopyInput(
                     value="ltx-2.3-22b-distilled-lora-384.safetensors",
                     id="distilled-lora",
                 )
                 yield Label("Distilled LoRA strength", classes="field-label")
-                yield Input(value="1.0", id="distilled-lora-strength")
+                yield CopyInput(value="1.0", id="distilled-lora-strength")
                 yield Checkbox("Enable TeaCache (two-stage only)", id="enable-teacache")
                 yield Label("TeaCache threshold", classes="field-label")
-                yield Input(placeholder="default: 0.5", id="teacache-thresh")
+                yield CopyInput(placeholder="default: 0.5", id="teacache-thresh")
 
             with Collapsible(title="LoRA weights (optional)", collapsed=True):
                 yield Static(
                     "One LoRA per line: PATH STRENGTH",
                     classes="field-hint",
                 )
-                yield TextArea(id="lora-specs")
+                yield CopyTextArea(id="lora-specs")
 
             with Collapsible(title="Model & memory", collapsed=True):
                 yield Label("Model", classes="field-label")
                 yield Select(MODEL_PRESETS, id="model", value="dgrauet/ltx-2.3-mlx-q8")
                 yield Label("Gemma encoder", classes="field-label")
-                yield Input(
+                yield CopyInput(
                     value="mlx-community/gemma-3-12b-it-4bit",
                     id="gemma",
                 )
                 yield Label("Seed (-1 = random)", classes="field-label")
-                yield Input(value="-1", id="seed")
+                yield CopyInput(value="-1", id="seed")
                 yield Checkbox("Low RAM streaming (--low-ram)", id="low-ram")
                 yield Checkbox("Quiet (--quiet)", id="quiet")
                 yield Label("Tiling", classes="field-label")
                 with Horizontal(classes="field-row"):
-                    yield Input(value="1", id="tile-frames", placeholder="tile frames")
-                    yield Input(value="1", id="tile-spatial", placeholder="tile spatial")
-                    yield Input(value="2", id="tile-overlap", placeholder="overlap")
+                    yield CopyInput(value="1", id="tile-frames", placeholder="tile frames")
+                    yield CopyInput(value="1", id="tile-spatial", placeholder="tile spatial")
+                    yield CopyInput(value="2", id="tile-overlap", placeholder="overlap")
 
         yield Static("", id="command-preview")
         yield Static(
@@ -216,11 +215,11 @@ class GenerateApp(App[None]):
 
     def on_mount(self) -> None:
         if self._initial_prompt:
-            self.query_one("#prompt", Input).value = self._initial_prompt
+            self.query_one("#prompt", CopyInput).value = self._initial_prompt
         if self._initial_output is not None:
-            self.query_one("#output-path", Input).value = str(self._initial_output)
+            self.query_one("#output-path", CopyInput).value = str(self._initial_output)
         if self._initial_image is not None:
-            self.query_one("#image-path", Input).value = str(self._initial_image)
+            self.query_one("#image-path", CopyInput).value = str(self._initial_image)
         self._form.sync_custom_visibility("#frame-rate-preset", "#frame-rate")
         self._form.sync_resolution_visibility()
         self._last_run_options = load_last_run()
@@ -256,8 +255,8 @@ class GenerateApp(App[None]):
         for widget_id in widget_ids:
             self.query_one(widget_id).add_class(INVALID_CLASS)
 
-    @on(Input.Changed)
-    def input_changed(self, event: Input.Changed) -> None:
+    @on(CopyInput.Changed)
+    def input_changed(self, event: CopyInput.Changed) -> None:
         event.input.remove_class(INVALID_CLASS)
         self._refresh_command_preview()
 
@@ -267,7 +266,7 @@ class GenerateApp(App[None]):
         self._refresh_command_preview()
 
     @on(Checkbox.Changed)
-    @on(TextArea.Changed)
+    @on(CopyTextArea.Changed)
     def form_changed(self) -> None:
         self._refresh_command_preview()
 
@@ -311,7 +310,7 @@ class GenerateApp(App[None]):
             if save and picked.is_dir():
                 _, default_name = self._form.browse_save_defaults()
                 picked = picked / default_name
-        self.query_one(input_id, Input).value = str(picked)
+        self.query_one(input_id, CopyInput).value = str(picked)
 
     @on(Button.Pressed, "#browse-output")
     def browse_output(self) -> None:
