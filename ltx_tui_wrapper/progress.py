@@ -38,19 +38,47 @@ def _filled_line(*, width: int, background: str) -> str:
     return f"{background}{' ' * width}{_RESET}"
 
 
-def print_status_band(message: str, *, success: bool) -> None:
-    """Print a three-line color band with *message* centered inside."""
-    background = _SUCCESS_BG if success else _FAILURE_BG
-    stream = sys.stdout if success else sys.stderr
+def _sanitize_terminal_text(text: str) -> str:
+    """Normalize subprocess output so carriage returns do not clobber later lines."""
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    return "\n".join(line.rstrip() for line in normalized.split("\n")).strip()
 
+
+def _print_colored_band(message: str, *, background: str, stream) -> None:
     if not stream.isatty():
         print(message, file=stream, flush=True)
         return
 
     width = _terminal_width()
+    band_text = _fit_message(message, width)
     middle_index = _BAND_LINES // 2
     for line_index in range(_BAND_LINES):
         if line_index == middle_index:
-            print(_band_line(message, width=width, background=background), file=stream, flush=True)
+            print(_band_line(band_text, width=width, background=background), file=stream, flush=True)
         else:
             print(_filled_line(width=width, background=background), file=stream, flush=True)
+
+
+def print_failure(summary: str, *, details: str | None = None) -> None:
+    """Show a short summary in the red band and print full error text below."""
+    _print_colored_band(summary, background=_FAILURE_BG, stream=sys.stderr)
+
+    body = _sanitize_terminal_text(details if details is not None else summary)
+    if body:
+        print(body, file=sys.stdout, flush=True)
+
+
+def print_status_band(message: str, *, success: bool) -> None:
+    """Print a three-line color band with *message* centered inside."""
+    if not success:
+        print_failure(message)
+        return
+
+    background = _SUCCESS_BG
+    stream = sys.stdout
+
+    if not stream.isatty():
+        print(message, file=stream, flush=True)
+        return
+
+    _print_colored_band(message, background=background, stream=stream)

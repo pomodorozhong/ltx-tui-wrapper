@@ -39,7 +39,7 @@ uv run ltx-tui-batch -n 10 --continue-on-error
 
 ### Extend a video
 
-Chain I2V segments from the last generated video until the combined length exceeds a target duration. Uses each segment's last frame as the next input. Requires `ffmpeg` and `ffprobe` on PATH.
+Chain I2V segments from the last generated video until the combined length exceeds a target duration. Uses each segment's last frame as the next input (no upscaling by default). Requires `ffmpeg` and `ffprobe` on PATH.
 
 ```bash
 # Extend to over 60 seconds (default output: <last-output>_extended.mp4)
@@ -47,6 +47,9 @@ uv run ltx-tui-extend -l 60
 
 # Target 90 seconds with a custom output path
 uv run ltx-tui-extend -l 90s -o rain_extended.mp4
+
+# AI-upscale each last frame before the next segment (requires realesrgan-ncnn-vulkan)
+uv run ltx-tui-extend -l 60 --upscale
 
 # Retry failed segments up to 3 times; keep intermediate segment files
 uv run ltx-tui-extend -l 1.5m -r 3 --keep-segments

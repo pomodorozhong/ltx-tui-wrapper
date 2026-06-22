@@ -17,8 +17,9 @@ from ltx_tui_wrapper.last_run import load_last_run
 from ltx_tui_wrapper.options import GenerateOptions
 from ltx_tui_wrapper.output_paths import timestamped_output_path
 from ltx_tui_wrapper.parsing import build_command_argv, format_command
-from ltx_tui_wrapper.progress import print_status_band
+from ltx_tui_wrapper.progress import print_failure, print_status_band
 from ltx_tui_wrapper.runner import execute_command, prevent_sleep
+from ltx_tui_wrapper.upscale import upscale_image
 
 _DURATION_RE = re.compile(
     r"^(?:(?P<minutes>\d+(?:\.\d+)?)m)?(?:(?P<seconds>\d+(?:\.\d+)?)s?)?$",
@@ -201,6 +202,11 @@ def extend_video(
     max_retries: int,
     final_output: str | None = None,
     keep_segments: bool = False,
+    upscale: bool = False,
+    upscale_model: str = "realesrgan-x4plus",
+    upscale_scale: int | None = None,
+    realesrgan_bin: str | None = None,
+    models_dir: str | None = None,
 ) -> int:
     """Chain last-run generations until total duration exceeds *target_duration*."""
     base_options = load_last_run()
@@ -286,6 +292,26 @@ def extend_video(
 
                 frame_path = work_dir / f"segment_{segment_index:03d}_last.png"
                 extract_last_frame(segment_path, frame_path)
+                if upscale:
+                    upscaled_frame_path = (
+                        work_dir / f"segment_{segment_index:03d}_last_upscaled.png"
+                    )
+                    try:
+                        upscale_image(
+                            frame_path,
+                            upscaled_frame_path,
+                            model=upscale_model,
+                            scale=upscale_scale,
+                            realesrgan_bin=realesrgan_bin,
+                            models_dir=models_dir,
+                        )
+                    except (RuntimeError, ValueError) as exc:
+                        print_failure(
+                            f"Failed to upscale last frame for segment {segment_index}",
+                            details=str(exc),
+                        )
+                        return 1
+                    frame_path = upscaled_frame_path
                 current_options = run_options
 
         if not segments:
@@ -321,6 +347,11 @@ def run_extend_batch(
     final_output: str | None = None,
     keep_segments: bool = False,
     continue_on_error: bool = False,
+    upscale: bool = False,
+    upscale_model: str = "realesrgan-x4plus",
+    upscale_scale: int | None = None,
+    realesrgan_bin: str | None = None,
+    models_dir: str | None = None,
 ) -> int:
     """Run :func:`extend_video` *count* times with timestamped final outputs."""
     if count < 1:
@@ -332,6 +363,11 @@ def run_extend_batch(
             max_retries=max_retries,
             final_output=final_output,
             keep_segments=keep_segments,
+            upscale=upscale,
+            upscale_model=upscale_model,
+            upscale_scale=upscale_scale,
+            realesrgan_bin=realesrgan_bin,
+            models_dir=models_dir,
         )
 
     base_options = load_last_run()
@@ -355,6 +391,11 @@ def run_extend_batch(
                 max_retries=max_retries,
                 final_output=run_output,
                 keep_segments=keep_segments,
+                upscale=upscale,
+                upscale_model=upscale_model,
+                upscale_scale=upscale_scale,
+                realesrgan_bin=realesrgan_bin,
+                models_dir=models_dir,
             )
             if exit_code != 0:
                 failures += 1

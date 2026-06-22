@@ -13,7 +13,7 @@ from pathlib import Path
 
 from ltx_tui_wrapper.batch_cli import format_elapsed
 from ltx_tui_wrapper.last_run import load_last_run
-from ltx_tui_wrapper.progress import print_status_band
+from ltx_tui_wrapper.progress import print_failure, print_status_band
 from ltx_tui_wrapper.runner import prevent_sleep
 
 TARGET_WIDTH = 1920
@@ -124,13 +124,60 @@ def probe_video_info(path: Path) -> VideoInfo:
     )
 
 
+def build_scale_filter(target_width: int, target_height: int) -> str:
+    """Return an FFmpeg filter chain that fits content into *target_width*×*target_height*."""
+    return (
+        f"scale={target_width}:{target_height}:"
+        "force_original_aspect_ratio=decrease:flags=lanczos,"
+        f"pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:black"
+    )
+
+
 def build_1080p_filter() -> str:
     """Return the FFmpeg filter chain for strict 1920×1080 output."""
-    return (
-        f"scale={TARGET_WIDTH}:{TARGET_HEIGHT}:"
-        "force_original_aspect_ratio=decrease:flags=lanczos,"
-        f"pad={TARGET_WIDTH}:{TARGET_HEIGHT}:(ow-iw)/2:(oh-ih)/2:black"
+    return build_scale_filter(TARGET_WIDTH, TARGET_HEIGHT)
+
+
+def probe_image_size(path: Path) -> tuple[int, int]:
+    """Return ``(width, height)`` for an image file via ffprobe."""
+    _require_tool("ffprobe")
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "default=noprint_wrappers=1",
+            str(path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
     )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"ffprobe failed for {path}: {result.stderr.strip() or result.stdout.strip()}"
+        )
+
+    fields: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            fields[key] = value
+
+    try:
+        width = int(fields["width"])
+        height = int(fields["height"])
+    except (KeyError, ValueError) as exc:
+        raise RuntimeError(f"could not parse image size for {path}") from exc
+
+    if width <= 0 or height <= 0:
+        raise RuntimeError(f"invalid image size for {path}: {width}×{height}")
+    return width, height
 
 
 def compute_ai_scale(
@@ -217,31 +264,117 @@ def _extract_frames(input_path: Path, frames_dir: Path, *, fps: float) -> None:
         raise RuntimeError(f"ffmpeg extracted no frames from {input_path}")
 
 
-def _run_realesrgan(
-    frames_dir: Path,
-    upscaled_dir: Path,
+def _realesrgan_model_stem(model: str, scale: int) -> str:
+    if model == "realesr-animevideov3":
+        return f"{model}-x{scale}"
+    return model
+
+
+def _resolve_realesrgan_binary(realesrgan_bin: str | None) -> Path:
+    path = (
+        Path(realesrgan_bin)
+        if realesrgan_bin
+        else Path(_require_tool("realesrgan-ncnn-vulkan"))
+    )
+    return path.resolve()
+
+
+def _resolve_realesrgan_models_dir(
+    bin_path: Path,
+    *,
+    models_dir: str | None,
+) -> Path:
+    if models_dir is not None:
+        return Path(models_dir).expanduser().resolve()
+    sibling = (bin_path.parent / "models").resolve()
+    if sibling.is_dir():
+        return sibling
+    cwd_models = (Path.cwd() / "models").resolve()
+    if cwd_models.is_dir():
+        return cwd_models
+    return sibling
+
+
+def _validate_realesrgan_model(models_dir: Path, *, model: str, scale: int) -> None:
+    stem = _realesrgan_model_stem(model, scale)
+    param_path = models_dir / f"{stem}.param"
+    bin_path = models_dir / f"{stem}.bin"
+    missing = [path for path in (param_path, bin_path) if not path.is_file()]
+    if not missing:
+        return
+    missing_list = "\n".join(f"  - {path}" for path in missing)
+    raise RuntimeError(
+        f"realesrgan-ncnn-vulkan model files not found for {model!r} (scale={scale}x).\n"
+        f"Missing:\n{missing_list}\n"
+        f"Expected models directory: {models_dir}\n\n"
+        "Download the release zip that includes models/ from:\n"
+        "  https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.5.0\n"
+        "Place the models/ folder next to the realesrgan-ncnn-vulkan binary, "
+        "or pass --models-dir."
+    )
+
+
+def _prepare_realesrgan(
     *,
     model: str,
     scale: int,
-    realesrgan_bin: str,
+    realesrgan_bin: str | None,
     models_dir: str | None,
+) -> tuple[Path, Path]:
+    bin_path = _resolve_realesrgan_binary(realesrgan_bin)
+    models_path = _resolve_realesrgan_models_dir(bin_path, models_dir=models_dir)
+    _validate_realesrgan_model(models_path, model=model, scale=scale)
+    return bin_path, models_path
+
+
+def _format_subprocess_failure(
+    tool: str,
+    result: subprocess.CompletedProcess[str],
+    *,
+    command: list[str] | None = None,
+) -> str:
+    lines = [f"{tool} exited with code {result.returncode}"]
+    if command is not None:
+        lines.append(f"command: {' '.join(command)}")
+    stderr = result.stderr.strip()
+    stdout = result.stdout.strip()
+    if stderr:
+        lines.append(f"stderr:\n{stderr}")
+    if stdout:
+        lines.append(f"stdout:\n{stdout}")
+    if not stderr and not stdout:
+        lines.append("(no output captured)")
+    return "\n".join(lines)
+
+
+def _run_realesrgan(
+    input_path: Path,
+    output_path: Path,
+    *,
+    model: str,
+    scale: int,
+    realesrgan_bin: Path,
+    models_dir: Path,
 ) -> None:
-    upscaled_dir.mkdir(parents=True, exist_ok=True)
+    if input_path.is_dir():
+        output_path.mkdir(parents=True, exist_ok=True)
+    else:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
     command = [
-        realesrgan_bin,
+        str(realesrgan_bin),
         "-i",
-        str(frames_dir),
+        str(input_path),
         "-o",
-        str(upscaled_dir),
+        str(output_path),
         "-n",
         model,
         "-s",
         str(scale),
         "-f",
         "png",
+        "-m",
+        str(models_dir),
     ]
-    if models_dir is not None:
-        command.extend(["-m", models_dir])
 
     result = subprocess.run(
         command,
@@ -251,11 +384,17 @@ def _run_realesrgan(
     )
     if result.returncode != 0:
         raise RuntimeError(
-            f"realesrgan-ncnn-vulkan failed: "
-            f"{result.stderr.strip() or result.stdout.strip()}"
+            _format_subprocess_failure(
+                "realesrgan-ncnn-vulkan",
+                result,
+                command=command,
+            )
         )
-    if not any(upscaled_dir.glob("*.png")):
-        raise RuntimeError("realesrgan-ncnn-vulkan produced no output frames")
+    if output_path.is_dir():
+        if not any(output_path.glob("*.png")):
+            raise RuntimeError("realesrgan-ncnn-vulkan produced no output frames")
+    elif not output_path.is_file():
+        raise RuntimeError("realesrgan-ncnn-vulkan produced no output image")
 
 
 def _encode_upscaled_frames(
@@ -309,6 +448,60 @@ def _encode_upscaled_frames(
         )
 
 
+def upscale_image(
+    input_path: Path,
+    output_path: Path,
+    *,
+    model: str = "realesrgan-x4plus",
+    scale: int | None = None,
+    realesrgan_bin: str | None = None,
+    models_dir: str | None = None,
+) -> None:
+    """AI-upscale a single image via realesrgan-ncnn-vulkan."""
+    if model not in NCNN_MODELS:
+        raise ValueError(
+            f"unknown model {model!r}; choose from: {', '.join(NCNN_MODELS)}"
+        )
+    if scale is not None and scale not in AI_SCALES:
+        raise ValueError(f"scale must be one of {', '.join(map(str, AI_SCALES))}")
+
+    if not input_path.is_file():
+        raise RuntimeError(f"input image not found: {input_path}")
+
+    width, height = probe_image_size(input_path)
+    ai_scale = scale if scale is not None else AI_SCALES[-1]
+    bin_path, models_path = _prepare_realesrgan(
+        model=model,
+        scale=ai_scale,
+        realesrgan_bin=realesrgan_bin,
+        models_dir=models_dir,
+    )
+
+    work_dir = Path(tempfile.mkdtemp(prefix="ltx-tui-upscale-image-"))
+    upscaled_path = work_dir / "upscaled.png"
+
+    print(
+        f"AI upscale frame: {input_path.name} "
+        f"({width}×{height}, model={model}, scale={ai_scale}x)",
+        flush=True,
+    )
+
+    try:
+        _run_realesrgan(
+            input_path,
+            upscaled_path,
+            model=model,
+            scale=ai_scale,
+            realesrgan_bin=bin_path,
+            models_dir=models_path,
+        )
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(upscaled_path, output_path)
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
 def _run_ai_upscale(
     input_path: Path,
     output_path: Path,
@@ -320,8 +513,13 @@ def _run_ai_upscale(
     models_dir: str | None,
     keep_frames: bool,
 ) -> None:
-    bin_path = realesrgan_bin or _require_tool("realesrgan-ncnn-vulkan")
     ai_scale = scale if scale is not None else compute_ai_scale(info.width, info.height)
+    bin_path, models_path = _prepare_realesrgan(
+        model=model,
+        scale=ai_scale,
+        realesrgan_bin=realesrgan_bin,
+        models_dir=models_dir,
+    )
 
     work_dir = Path(tempfile.mkdtemp(prefix="ltx-tui-upscale-"))
     frames_dir = work_dir / "frames"
@@ -343,7 +541,7 @@ def _run_ai_upscale(
             model=model,
             scale=ai_scale,
             realesrgan_bin=bin_path,
-            models_dir=models_dir,
+            models_dir=models_path,
         )
 
         print("Encoding 1080p output…", flush=True)
@@ -410,7 +608,7 @@ def upscale_video(
     try:
         info = probe_video_info(in_path)
     except RuntimeError as exc:
-        print_status_band(str(exc), success=False)
+        print_failure("Video probe failed", details=str(exc))
         return 1
 
     print(
@@ -437,7 +635,7 @@ def upscale_video(
     except (RuntimeError, SystemExit) as exc:
         if isinstance(exc, SystemExit):
             raise
-        print_status_band(str(exc), success=False)
+        print_failure("Upscale failed", details=str(exc))
         return 1
 
     elapsed = time.perf_counter() - started
