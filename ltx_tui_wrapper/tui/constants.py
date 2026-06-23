@@ -1,4 +1,4 @@
-"""TUI constants for ltx-tui generate."""
+"""TUI constants for the ltx-tui application."""
 
 from __future__ import annotations
 
@@ -46,6 +46,23 @@ RESOLUTION_PRESETS: tuple[tuple[str, str], ...] = (
     ("Custom…", "custom"),
 )
 
+NCNN_MODEL_PRESETS: tuple[tuple[str, str], ...] = (
+    ("FFmpeg Lanczos (default)", "__lanczos__"),
+    ("realesrgan-x4plus", "realesrgan-x4plus"),
+    ("realesr-animevideov3", "realesr-animevideov3"),
+    ("realesrgan-x4plus-anime", "realesrgan-x4plus-anime"),
+    ("realesrnet-x4plus", "realesrnet-x4plus"),
+)
+
+EXTEND_UPSCALE_MODEL_PRESETS: tuple[tuple[str, str], ...] = (
+    ("realesrgan-x4plus (default)", "realesrgan-x4plus"),
+    ("realesr-animevideov3", "realesr-animevideov3"),
+    ("realesrgan-x4plus-anime", "realesrgan-x4plus-anime"),
+    ("realesrnet-x4plus", "realesrnet-x4plus"),
+)
+
+TAB_IDS = ("generate", "batch", "extend", "upscale")
+
 APP_CSS = """
 Screen {
     layout: vertical;
@@ -76,6 +93,20 @@ Collapsible {
     margin: 1 0;
     border: solid $primary;
     padding: 0 1 1 1;
+}
+TabbedContent {
+    height: 1fr;
+}
+TabbedContent > ContentSwitcher {
+    height: 1fr;
+}
+.command-preview {
+    height: auto;
+    margin: 0 1;
+    padding: 1;
+    border: solid $accent;
+    background: $surface;
+    color: $text;
 }
 #command-preview {
     height: auto;

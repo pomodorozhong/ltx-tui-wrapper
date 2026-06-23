@@ -6,7 +6,6 @@ import argparse
 import sys
 import time
 from dataclasses import replace
-
 from pathlib import Path
 
 from ltx_tui_wrapper.last_run import load_last_run
@@ -78,28 +77,35 @@ def run_batch(*, count: int, continue_on_error: bool = False) -> int:
 
 
 def main() -> None:
+    from ltx_tui_wrapper.tui.app import run_ltx_tui
+
     parser = argparse.ArgumentParser(
         prog="ltx-tui-batch",
         description=(
-            "Run the last ltx-tui generate command repeatedly. "
-            "Each output file gets a timestamp suffix (e.g. out_20250619_143022.mp4)."
+            "Batch tab in ltx-tui: run the last generate command repeatedly. "
+            "Each output file gets a timestamp suffix."
         ),
     )
     parser.add_argument(
         "-n",
         "--count",
         type=int,
-        required=True,
         metavar="N",
-        help="Number of videos to generate",
+        help="Pre-fill the number of videos to generate",
     )
     parser.add_argument(
         "--continue-on-error",
         action="store_true",
-        help="Keep going after a failed run instead of stopping immediately",
+        help="Pre-fill continue on error",
     )
     args = parser.parse_args()
-    raise SystemExit(run_batch(count=args.count, continue_on_error=args.continue_on_error))
+    raise SystemExit(
+        run_ltx_tui(
+            initial_tab="batch",
+            batch_count=args.count,
+            batch_continue_on_error=args.continue_on_error,
+        )
+    )
 
 
 if __name__ == "__main__":
