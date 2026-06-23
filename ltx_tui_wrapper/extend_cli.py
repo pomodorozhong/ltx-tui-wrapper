@@ -35,7 +35,19 @@ def main() -> None:
     parser.add_argument(
         "-o",
         "--output",
-        help="Path for the final concatenated video (default: <last-output>_extended.mp4)",
+        help=(
+            "Path for the final concatenated video "
+            "(default: <last-output>_extended_<timestamp>.mp4)"
+        ),
+    )
+    parser.add_argument(
+        "--timestamp",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Append a timestamp suffix to the output file name "
+            "(default: on)"
+        ),
     )
     parser.add_argument(
         "--keep-segments",
@@ -105,6 +117,7 @@ def main() -> None:
             max_retries=args.retries,
             count=args.count,
             final_output=args.output,
+            timestamp=args.timestamp,
             keep_segments=args.keep_segments,
             continue_on_error=args.continue_on_error,
             upscale=args.upscale,

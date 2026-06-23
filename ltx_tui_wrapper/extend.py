@@ -170,6 +170,19 @@ def extended_output_path(base_output: str) -> str:
     return str(path.with_name(f"{path.stem}_extended{path.suffix}"))
 
 
+def resolve_final_output_path(
+    base_output: str,
+    final_output: str | None,
+    *,
+    timestamp: bool,
+) -> str:
+    """Return the path for the concatenated extended video."""
+    path = final_output or extended_output_path(base_output)
+    if timestamp:
+        path = timestamped_output_path(path)
+    return path
+
+
 def run_with_retries(
     argv: list[str],
     *,
@@ -201,6 +214,7 @@ def extend_video(
     target_duration: float,
     max_retries: int,
     final_output: str | None = None,
+    timestamp: bool = True,
     keep_segments: bool = False,
     upscale: bool = False,
     upscale_model: str = "realesrgan-x4plus",
@@ -318,7 +332,13 @@ def extend_video(
             print("No segments were generated.", file=sys.stderr)
             return 1
 
-        out_path = Path(final_output or extended_output_path(base_options.output))
+        out_path = Path(
+            resolve_final_output_path(
+                base_options.output,
+                final_output,
+                timestamp=timestamp,
+            )
+        )
         print(
             f"Concatenating {len(segments)} segment(s) -> {out_path}",
             flush=True,
@@ -345,6 +365,7 @@ def run_extend_batch(
     max_retries: int,
     count: int,
     final_output: str | None = None,
+    timestamp: bool = True,
     keep_segments: bool = False,
     continue_on_error: bool = False,
     upscale: bool = False,
@@ -353,7 +374,7 @@ def run_extend_batch(
     realesrgan_bin: str | None = None,
     models_dir: str | None = None,
 ) -> int:
-    """Run :func:`extend_video` *count* times with timestamped final outputs."""
+    """Run :func:`extend_video` *count* times, optionally with timestamped outputs."""
     if count < 1:
         raise SystemExit("count must be at least 1")
 
@@ -362,6 +383,7 @@ def run_extend_batch(
             target_duration=target_duration,
             max_retries=max_retries,
             final_output=final_output,
+            timestamp=timestamp,
             keep_segments=keep_segments,
             upscale=upscale,
             upscale_model=upscale_model,
@@ -380,8 +402,11 @@ def run_extend_batch(
     batch_started = time.perf_counter()
     with prevent_sleep():
         for index in range(1, count + 1):
-            base_final = final_output or extended_output_path(base_options.output)
-            run_output = timestamped_output_path(base_final)
+            run_output = resolve_final_output_path(
+                base_options.output,
+                final_output,
+                timestamp=timestamp,
+            )
             print(
                 f"[{index}/{count}] Extending to > {target_duration:.1f}s -> {run_output}",
                 flush=True,
@@ -390,6 +415,7 @@ def run_extend_batch(
                 target_duration=target_duration,
                 max_retries=max_retries,
                 final_output=run_output,
+                timestamp=False,
                 keep_segments=keep_segments,
                 upscale=upscale,
                 upscale_model=upscale_model,
