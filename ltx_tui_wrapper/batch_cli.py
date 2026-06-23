@@ -7,10 +7,13 @@ import sys
 import time
 from dataclasses import replace
 
+from pathlib import Path
+
 from ltx_tui_wrapper.last_run import load_last_run
 from ltx_tui_wrapper.output_paths import timestamped_output_path
 from ltx_tui_wrapper.parsing import build_command_argv, format_command
 from ltx_tui_wrapper.runner import execute_command, prevent_sleep
+from ltx_tui_wrapper.video_metadata import write_command_metadata
 
 
 def format_elapsed(seconds: float) -> str:
@@ -57,6 +60,7 @@ def run_batch(*, count: int, continue_on_error: bool = False) -> int:
                 if not continue_on_error:
                     return exit_code
             else:
+                write_command_metadata(Path(run_options.output), argv)
                 print(
                     f"Run {index} finished in {format_elapsed(elapsed)} -> {run_options.output}",
                     flush=True,

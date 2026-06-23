@@ -375,7 +375,9 @@ def run_generate_tui(
 
     Returns the exit code of the built command, or ``0`` if the user quit without running.
     """
+    from ltx_tui_wrapper.last_run import load_last_run
     from ltx_tui_wrapper.runner import execute_command
+    from ltx_tui_wrapper.video_metadata import write_command_metadata
 
     app = GenerateApp(
         initial_prompt=prompt,
@@ -385,4 +387,9 @@ def run_generate_tui(
     app.run()
     if app.run_command is None:
         return 0
-    return execute_command(app.run_command)
+    exit_code = execute_command(app.run_command)
+    if exit_code == 0:
+        last_run = load_last_run()
+        if last_run is not None:
+            write_command_metadata(Path(last_run.output), app.run_command)
+    return exit_code

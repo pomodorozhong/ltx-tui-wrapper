@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -20,6 +21,14 @@ from ltx_tui_wrapper.parsing import build_command_argv, format_command
 from ltx_tui_wrapper.progress import print_failure, print_status_band
 from ltx_tui_wrapper.runner import execute_command, prevent_sleep
 from ltx_tui_wrapper.upscale import upscale_image
+from ltx_tui_wrapper.video_metadata import (
+    GENERATE_COMMANDS_METADATA_KEY,
+    METADATA_KEY,
+    current_invocation,
+    format_generate_commands,
+    invocation_with_output,
+    write_metadata,
+)
 
 _DURATION_RE = re.compile(
     r"^(?:(?P<minutes>\d+(?:\.\d+)?)m)?(?:(?P<seconds>\d+(?:\.\d+)?)s?)?$",
@@ -239,6 +248,7 @@ def extend_video(
     _require_tool("ffprobe")
 
     segments: list[Path] = []
+    segment_commands: list[list[str]] = []
     total_duration = 0.0
     segment_index = 0
     current_options: GenerateOptions = base_options
@@ -267,6 +277,7 @@ def extend_video(
                     )
 
                 argv = build_command_argv(run_options)
+                segment_commands.append(argv)
                 label = f"Segment {segment_index}"
                 print(f"[{label}] {format_command(run_options)}", flush=True)
                 exit_code, elapsed = run_with_retries(
@@ -344,6 +355,17 @@ def extend_video(
             flush=True,
         )
         concat_videos(segments, out_path)
+        write_metadata(
+            out_path,
+            {
+                METADATA_KEY: shlex.join(
+                    invocation_with_output(current_invocation(), out_path)
+                ),
+                GENERATE_COMMANDS_METADATA_KEY: format_generate_commands(
+                    segment_commands
+                ),
+            },
+        )
         final_duration = probe_video_duration(out_path)
         total_elapsed = time.perf_counter() - extend_started
         print(
