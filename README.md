@@ -50,6 +50,12 @@ uv run ltx-tui-extend -l 90s -o rain_extended.mp4
 
 # Retry failed segments up to 3 times; keep intermediate segment files
 uv run ltx-tui-extend -l 1.5m -r 3 --keep-segments
+
+# Extend 5 videos; each final output gets a timestamp suffix
+uv run ltx-tui-extend -l 60 -n 5
+
+# Keep going if one extend run fails
+uv run ltx-tui-extend -l 60 -n 10 --continue-on-error
 ```
 
 Duration accepts seconds (`60`), suffixed seconds (`90s`), or minutes (`1.5m`).

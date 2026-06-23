@@ -311,3 +311,67 @@ def extend_video(
             for segment in segments:
                 segment.unlink(missing_ok=True)
             shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def run_extend_batch(
+    *,
+    target_duration: float,
+    max_retries: int,
+    count: int,
+    final_output: str | None = None,
+    keep_segments: bool = False,
+    continue_on_error: bool = False,
+) -> int:
+    """Run :func:`extend_video` *count* times with timestamped final outputs."""
+    if count < 1:
+        raise SystemExit("count must be at least 1")
+
+    if count == 1:
+        return extend_video(
+            target_duration=target_duration,
+            max_retries=max_retries,
+            final_output=final_output,
+            keep_segments=keep_segments,
+        )
+
+    base_options = load_last_run()
+    if base_options is None:
+        raise SystemExit(
+            "No saved generate settings found. Run `ltx-tui` once and press Run first."
+        )
+
+    failures = 0
+    batch_started = time.perf_counter()
+    with prevent_sleep():
+        for index in range(1, count + 1):
+            base_final = final_output or extended_output_path(base_options.output)
+            run_output = timestamped_output_path(base_final)
+            print(
+                f"[{index}/{count}] Extending to > {target_duration:.1f}s -> {run_output}",
+                flush=True,
+            )
+            exit_code = extend_video(
+                target_duration=target_duration,
+                max_retries=max_retries,
+                final_output=run_output,
+                keep_segments=keep_segments,
+            )
+            if exit_code != 0:
+                failures += 1
+                print(
+                    f"Extend run {index} failed with exit code {exit_code}.",
+                    file=sys.stderr,
+                )
+                if not continue_on_error:
+                    return exit_code
+
+    total_elapsed = time.perf_counter() - batch_started
+    succeeded = count - failures
+    print(
+        f"Batch complete: {succeeded}/{count} succeeded in "
+        f"{format_elapsed(total_elapsed)}.",
+        flush=True,
+    )
+    if failures:
+        return 1
+    return 0

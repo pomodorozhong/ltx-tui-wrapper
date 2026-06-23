@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from ltx_tui_wrapper.extend import extend_video, parse_target_duration
+from ltx_tui_wrapper.extend import parse_target_duration, run_extend_batch
 
 
 def main() -> None:
@@ -41,10 +41,25 @@ def main() -> None:
         action="store_true",
         help="Keep individual segment videos and extracted frames after completion",
     )
+    parser.add_argument(
+        "-n",
+        "--count",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Number of extended videos to generate (default: 1)",
+    )
+    parser.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Keep going after a failed run instead of stopping immediately",
+    )
     args = parser.parse_args()
 
     if args.retries < 1:
         raise SystemExit("retries must be at least 1")
+    if args.count < 1:
+        raise SystemExit("count must be at least 1")
 
     try:
         target_duration = parse_target_duration(args.length)
@@ -52,11 +67,13 @@ def main() -> None:
         raise SystemExit(str(exc)) from exc
 
     raise SystemExit(
-        extend_video(
+        run_extend_batch(
             target_duration=target_duration,
             max_retries=args.retries,
+            count=args.count,
             final_output=args.output,
             keep_segments=args.keep_segments,
+            continue_on_error=args.continue_on_error,
         )
     )
 
