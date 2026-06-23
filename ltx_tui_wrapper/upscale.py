@@ -1,10 +1,11 @@
-"""Upscale a video to 1920×1080 using FFmpeg Lanczos scale and pad."""
+"""Upscale a video to 1920×1080 using FFmpeg or realesrgan-ncnn-vulkan."""
 
 from __future__ import annotations
 
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from fractions import Fraction
@@ -17,6 +18,15 @@ from ltx_tui_wrapper.runner import prevent_sleep
 
 TARGET_WIDTH = 1920
 TARGET_HEIGHT = 1080
+
+NCNN_MODELS = (
+    "realesrgan-x4plus",
+    "realesr-animevideov3",
+    "realesrgan-x4plus-anime",
+    "realesrnet-x4plus",
+)
+
+AI_SCALES = (2, 3, 4)
 
 
 @dataclass(frozen=True)
@@ -123,6 +133,20 @@ def build_1080p_filter() -> str:
     )
 
 
+def compute_ai_scale(
+    width: int,
+    height: int,
+    *,
+    target_width: int = TARGET_WIDTH,
+    target_height: int = TARGET_HEIGHT,
+) -> int:
+    """Return the smallest ncnn scale factor that exceeds the 1080p target box."""
+    for scale in AI_SCALES:
+        if width * scale >= target_width and height * scale >= target_height:
+            return scale
+    return AI_SCALES[-1]
+
+
 def upscaled_output_path(base_output: str) -> str:
     """Return the default path for the upscaled 1080p video."""
     path = Path(base_output)
@@ -167,10 +191,185 @@ def _run_ffmpeg_upscale(input_path: Path, output_path: Path, *, has_audio: bool)
         )
 
 
+def _extract_frames(input_path: Path, frames_dir: Path, *, fps: float) -> None:
+    _require_tool("ffmpeg")
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    result = subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-vf",
+            f"fps={fps}",
+            str(frames_dir / "frame_%08d.png"),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"ffmpeg frame extraction failed: "
+            f"{result.stderr.strip() or result.stdout.strip()}"
+        )
+    if not any(frames_dir.glob("frame_*.png")):
+        raise RuntimeError(f"ffmpeg extracted no frames from {input_path}")
+
+
+def _run_realesrgan(
+    frames_dir: Path,
+    upscaled_dir: Path,
+    *,
+    model: str,
+    scale: int,
+    realesrgan_bin: str,
+    models_dir: str | None,
+) -> None:
+    upscaled_dir.mkdir(parents=True, exist_ok=True)
+    command = [
+        realesrgan_bin,
+        "-i",
+        str(frames_dir),
+        "-o",
+        str(upscaled_dir),
+        "-n",
+        model,
+        "-s",
+        str(scale),
+        "-f",
+        "png",
+    ]
+    if models_dir is not None:
+        command.extend(["-m", models_dir])
+
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"realesrgan-ncnn-vulkan failed: "
+            f"{result.stderr.strip() or result.stdout.strip()}"
+        )
+    if not any(upscaled_dir.glob("*.png")):
+        raise RuntimeError("realesrgan-ncnn-vulkan produced no output frames")
+
+
+def _encode_upscaled_frames(
+    upscaled_dir: Path,
+    input_path: Path,
+    output_path: Path,
+    *,
+    fps: float,
+    has_audio: bool,
+) -> None:
+    _require_tool("ffmpeg")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    command = [
+        "ffmpeg",
+        "-y",
+        "-framerate",
+        str(fps),
+        "-i",
+        str(upscaled_dir / "frame_%08d.png"),
+        "-i",
+        str(input_path),
+        "-map",
+        "0:v:0",
+        "-vf",
+        build_1080p_filter(),
+        "-c:v",
+        "libx264",
+        "-crf",
+        "18",
+        "-preset",
+        "medium",
+        "-pix_fmt",
+        "yuv420p",
+    ]
+    if has_audio:
+        command.extend(["-map", "1:a:0", "-c:a", "copy"])
+    else:
+        command.append("-an")
+    command.extend(["-shortest", str(output_path)])
+
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0 or not output_path.is_file():
+        raise RuntimeError(
+            f"ffmpeg encode failed: {result.stderr.strip() or result.stdout.strip()}"
+        )
+
+
+def _run_ai_upscale(
+    input_path: Path,
+    output_path: Path,
+    *,
+    info: VideoInfo,
+    model: str,
+    scale: int | None,
+    realesrgan_bin: str | None,
+    models_dir: str | None,
+    keep_frames: bool,
+) -> None:
+    bin_path = realesrgan_bin or _require_tool("realesrgan-ncnn-vulkan")
+    ai_scale = scale if scale is not None else compute_ai_scale(info.width, info.height)
+
+    work_dir = Path(tempfile.mkdtemp(prefix="ltx-tui-upscale-"))
+    frames_dir = work_dir / "frames"
+    upscaled_dir = work_dir / "upscaled"
+
+    print(
+        f"AI upscale: model={model}, scale={ai_scale}x, binary={bin_path}",
+        flush=True,
+    )
+
+    try:
+        print("Extracting frames…", flush=True)
+        _extract_frames(input_path, frames_dir, fps=info.fps)
+
+        print("Running realesrgan-ncnn-vulkan…", flush=True)
+        _run_realesrgan(
+            frames_dir,
+            upscaled_dir,
+            model=model,
+            scale=ai_scale,
+            realesrgan_bin=bin_path,
+            models_dir=models_dir,
+        )
+
+        print("Encoding 1080p output…", flush=True)
+        _encode_upscaled_frames(
+            upscaled_dir,
+            input_path,
+            output_path,
+            fps=info.fps,
+            has_audio=info.has_audio,
+        )
+    finally:
+        if not keep_frames:
+            shutil.rmtree(work_dir, ignore_errors=True)
+        else:
+            print(f"Kept frame directories in {work_dir}", flush=True)
+
+
 def upscale_video(
     *,
     input_path: str | None = None,
     output_path: str | None = None,
+    model: str | None = None,
+    scale: int | None = None,
+    realesrgan_bin: str | None = None,
+    models_dir: str | None = None,
+    keep_frames: bool = False,
 ) -> int:
     """Upscale *input_path* to strict 1920×1080, preserving aspect ratio with padding."""
     if input_path is None:
@@ -181,6 +380,14 @@ def upscale_video(
                 "or pass `-i`."
             )
         input_path = last_run.output
+
+    if scale is not None and scale not in AI_SCALES:
+        raise SystemExit(f"scale must be one of {', '.join(map(str, AI_SCALES))}")
+
+    if model is not None and model not in NCNN_MODELS:
+        raise SystemExit(
+            f"unknown model {model!r}; choose from: {', '.join(NCNN_MODELS)}"
+        )
 
     in_path = Path(input_path)
     if not in_path.is_file():
@@ -193,9 +400,10 @@ def upscale_video(
     _require_tool("ffmpeg")
     _require_tool("ffprobe")
 
+    method = f"Real-ESRGAN ({model})" if model is not None else "Lanczos"
     started = time.perf_counter()
     print(
-        f"Upscaling {in_path} -> {out_path} ({TARGET_WIDTH}×{TARGET_HEIGHT}, Lanczos).",
+        f"Upscaling {in_path} -> {out_path} ({TARGET_WIDTH}×{TARGET_HEIGHT}, {method}).",
         flush=True,
     )
 
@@ -213,8 +421,22 @@ def upscale_video(
 
     try:
         with prevent_sleep():
-            _run_ffmpeg_upscale(in_path, out_path, has_audio=info.has_audio)
-    except RuntimeError as exc:
+            if model is None:
+                _run_ffmpeg_upscale(in_path, out_path, has_audio=info.has_audio)
+            else:
+                _run_ai_upscale(
+                    in_path,
+                    out_path,
+                    info=info,
+                    model=model,
+                    scale=scale,
+                    realesrgan_bin=realesrgan_bin,
+                    models_dir=models_dir,
+                    keep_frames=keep_frames,
+                )
+    except (RuntimeError, SystemExit) as exc:
+        if isinstance(exc, SystemExit):
+            raise
         print_status_band(str(exc), success=False)
         return 1
 

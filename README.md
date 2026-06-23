@@ -56,17 +56,23 @@ Duration accepts seconds (`60`), suffixed seconds (`90s`), or minutes (`1.5m`).
 
 ### Upscale to 1080p
 
-Scale a video to strict 1920×1080 with FFmpeg Lanczos, preserving aspect ratio and padding to 16:9. Requires `ffmpeg` and `ffprobe` on PATH.
+Scale a video to strict 1920×1080, preserving aspect ratio and padding to 16:9. Requires `ffmpeg` and `ffprobe` on PATH.
 
 ```bash
-# Upscale last generated video (default output: <last-output>_1080p.mp4)
+# Fast Lanczos upscale (default output: <last-output>_1080p.mp4)
 uv run ltx-tui-upscale
 
 # Custom input/output
 uv run ltx-tui-upscale -i rain.mp4 -o rain_1080p.mp4
+
+# AI upscale via realesrgan-ncnn-vulkan (requires binary on PATH)
+uv run ltx-tui-upscale --model realesrgan-x4plus
+
+# AI upscale for anime-style content
+uv run ltx-tui-upscale --model realesr-animevideov3
 ```
 
-This uses traditional interpolation, not AI upscaling — it is fast and temporally stable, but cannot reconstruct detail missing from the source.
+Without `--model`, uses FFmpeg Lanczos — fast and stable, but cannot reconstruct detail. With `--model`, extracts frames, runs [realesrgan-ncnn-vulkan](https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan), then encodes to 1080p. Download the macOS zip from [GitHub releases](https://github.com/xinntao/Real-ESRGAN/releases) and place the binary + `models/` folder on PATH.
 
 ## Generate options
 
