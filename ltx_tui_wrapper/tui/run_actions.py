@@ -4,14 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Callable, TypeVar
 
 from ltx_tui_wrapper.batch_cli import run_batch
 from ltx_tui_wrapper.extend import run_extend_batch
 from ltx_tui_wrapper.options import GenerateOptions
 from ltx_tui_wrapper.upscale import upscale_video
-
-TabId = Literal["generate", "batch", "extend", "upscale"]
 
 
 @dataclass(frozen=True)
@@ -56,40 +54,64 @@ class UpscaleRun:
 
 RunAction = GenerateRun | BatchRun | ExtendRun | UpscaleRun
 
+RunExecutor = Callable[[RunAction], int]
+_EXECUTORS: dict[type[RunAction], RunExecutor] = {}
 
-def execute_run_action(action: RunAction) -> int:
+ActionT = TypeVar("ActionT", bound=RunAction)
+
+
+def register_run_executor(
+    action_type: type[ActionT],
+) -> Callable[[Callable[[ActionT], int]], Callable[[ActionT], int]]:
+    """Register a run executor for a specific action payload type."""
+
+    def decorator(func: Callable[[ActionT], int]) -> Callable[[ActionT], int]:
+        _EXECUTORS[action_type] = func  # type: ignore[assignment]
+        return func
+
+    return decorator
+
+
+@register_run_executor(GenerateRun)
+def _execute_generate(action: GenerateRun) -> int:
     from ltx_tui_wrapper.runner import execute_command
     from ltx_tui_wrapper.video_metadata import write_command_metadata
 
-    if isinstance(action, GenerateRun):
-        exit_code = execute_command(action.command)
-        if exit_code == 0:
-            write_command_metadata(Path(action.options.output), action.command)
-        return exit_code
+    exit_code = execute_command(action.command)
+    if exit_code == 0:
+        write_command_metadata(Path(action.options.output), action.command)
+    return exit_code
 
-    if isinstance(action, BatchRun):
-        return run_batch(
-            count=action.count,
-            max_retries=action.max_retries,
-            continue_on_error=action.continue_on_error,
-        )
 
-    if isinstance(action, ExtendRun):
-        return run_extend_batch(
-            target_duration=action.target_duration,
-            max_retries=action.max_retries,
-            count=action.count,
-            final_output=action.final_output,
-            timestamp=action.timestamp,
-            keep_segments=action.keep_segments,
-            continue_on_error=action.continue_on_error,
-            upscale=action.upscale,
-            upscale_model=action.upscale_model,
-            upscale_scale=action.upscale_scale,
-            realesrgan_bin=action.realesrgan_bin,
-            models_dir=action.models_dir,
-        )
+@register_run_executor(BatchRun)
+def _execute_batch(action: BatchRun) -> int:
+    return run_batch(
+        count=action.count,
+        max_retries=action.max_retries,
+        continue_on_error=action.continue_on_error,
+    )
 
+
+@register_run_executor(ExtendRun)
+def _execute_extend(action: ExtendRun) -> int:
+    return run_extend_batch(
+        target_duration=action.target_duration,
+        max_retries=action.max_retries,
+        count=action.count,
+        final_output=action.final_output,
+        timestamp=action.timestamp,
+        keep_segments=action.keep_segments,
+        continue_on_error=action.continue_on_error,
+        upscale=action.upscale,
+        upscale_model=action.upscale_model,
+        upscale_scale=action.upscale_scale,
+        realesrgan_bin=action.realesrgan_bin,
+        models_dir=action.models_dir,
+    )
+
+
+@register_run_executor(UpscaleRun)
+def _execute_upscale(action: UpscaleRun) -> int:
     return upscale_video(
         input_path=action.input_path,
         output_path=action.output_path,
@@ -99,3 +121,10 @@ def execute_run_action(action: RunAction) -> int:
         models_dir=action.models_dir,
         keep_frames=action.keep_frames,
     )
+
+
+def execute_run_action(action: RunAction) -> int:
+    executor = _EXECUTORS.get(type(action))
+    if executor is None:
+        raise TypeError(f"No run executor registered for {type(action).__name__}")
+    return executor(action)

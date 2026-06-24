@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from ltx_tui_wrapper.tui.app import run_ltx_tui
+from ltx_tui_wrapper.tui.prefill import AppPrefill, UpscalePrefill
 from ltx_tui_wrapper.upscale import AI_SCALES, NCNN_MODELS
 
 
@@ -51,18 +52,21 @@ def main() -> None:
         help="Pre-fill keep extracted frames after AI upscaling",
     )
     args = parser.parse_args()
+    prefill = AppPrefill(
+        initial_tab="upscale",
+        upscale=UpscalePrefill(
+            input=args.input,
+            output=args.output,
+            model=args.model,
+            scale=args.scale,
+            realesrgan_bin=args.realesrgan_bin,
+            models_dir=args.models_dir,
+            keep_frames=args.keep_frames,
+        ),
+    )
 
     raise SystemExit(
-        run_ltx_tui(
-            initial_tab="upscale",
-            upscale_input=args.input,
-            upscale_output=args.output,
-            upscale_model=args.model,
-            upscale_scale=args.scale,
-            upscale_realesrgan_bin=args.realesrgan_bin,
-            upscale_models_dir=args.models_dir,
-            upscale_keep_frames=args.keep_frames,
-        )
+        run_ltx_tui(prefill=prefill)
     )
 
 

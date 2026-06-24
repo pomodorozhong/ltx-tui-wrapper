@@ -17,10 +17,18 @@ from ltx_tui_wrapper.file_dialog import (
 )
 from ltx_tui_wrapper.last_run import load_last_run
 from ltx_tui_wrapper.options import GenerateOptions
-from ltx_tui_wrapper.tui.constants import APP_CSS, TAB_IDS
+from ltx_tui_wrapper.tui.constants import APP_CSS
 from ltx_tui_wrapper.tui.form import GenerateForm
-from ltx_tui_wrapper.tui.run_actions import RunAction, TabId, execute_run_action
+from ltx_tui_wrapper.tui.prefill import (
+    AppPrefill,
+    BatchPrefill,
+    ExtendPrefill,
+    GeneratePrefill,
+    UpscalePrefill,
+)
+from ltx_tui_wrapper.tui.run_actions import RunAction, execute_run_action
 from ltx_tui_wrapper.tui.screens import FilePickScreen
+from ltx_tui_wrapper.tui.tab_registry import TAB_SPEC_BY_ID, TAB_SPECS, TabId
 from ltx_tui_wrapper.tui.tabs import (
     BatchTabMixin,
     ExtendTabMixin,
@@ -48,15 +56,13 @@ class LtxTuiApp(
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("ctrl+r", "run", "Run"),
-        ("ctrl+1", "show_tab_generate", "Generate"),
-        ("ctrl+2", "show_tab_batch", "Batch"),
-        ("ctrl+3", "show_tab_extend", "Extend"),
-        ("ctrl+4", "show_tab_upscale", "Upscale"),
+        *[(spec.hotkey, f"show_tab('{spec.id}')", spec.title) for spec in TAB_SPECS],
     ]
 
     def __init__(
         self,
         *,
+        prefill: AppPrefill | None = None,
         initial_tab: TabId = "generate",
         initial_prompt: str | None = None,
         initial_output: Path | None = None,
@@ -85,32 +91,69 @@ class LtxTuiApp(
         upscale_keep_frames: bool | None = None,
     ) -> None:
         super().__init__()
-        self._initial_tab = initial_tab
-        self._initial_prompt = initial_prompt
-        self._initial_output = initial_output
-        self._initial_image = initial_image
-        self._prefill_batch_count = batch_count
-        self._prefill_batch_retries = batch_retries
-        self._prefill_batch_continue_on_error = batch_continue_on_error
-        self._extend_length = extend_length
-        self._extend_retries = extend_retries
-        self._extend_count = extend_count
-        self._extend_output = extend_output
-        self._extend_timestamp = extend_timestamp
-        self._extend_keep_segments = extend_keep_segments
-        self._extend_continue_on_error = extend_continue_on_error
-        self._extend_upscale = extend_upscale
-        self._extend_upscale_model = extend_upscale_model
-        self._extend_upscale_scale = extend_upscale_scale
-        self._extend_realesrgan_bin = extend_realesrgan_bin
-        self._extend_models_dir = extend_models_dir
-        self._upscale_input = upscale_input
-        self._upscale_output = upscale_output
-        self._upscale_model = upscale_model
-        self._upscale_scale = upscale_scale
-        self._upscale_realesrgan_bin = upscale_realesrgan_bin
-        self._upscale_models_dir = upscale_models_dir
-        self._upscale_keep_frames = upscale_keep_frames
+        if prefill is None:
+            prefill = AppPrefill(
+                initial_tab=initial_tab,
+                generate=GeneratePrefill(
+                    prompt=initial_prompt,
+                    output=initial_output,
+                    image=initial_image,
+                ),
+                batch=BatchPrefill(
+                    count=batch_count,
+                    retries=batch_retries,
+                    continue_on_error=batch_continue_on_error,
+                ),
+                extend=ExtendPrefill(
+                    length=extend_length,
+                    retries=extend_retries,
+                    count=extend_count,
+                    output=extend_output,
+                    timestamp=extend_timestamp,
+                    keep_segments=extend_keep_segments,
+                    continue_on_error=extend_continue_on_error,
+                    upscale=extend_upscale,
+                    upscale_model=extend_upscale_model,
+                    upscale_scale=extend_upscale_scale,
+                    realesrgan_bin=extend_realesrgan_bin,
+                    models_dir=extend_models_dir,
+                ),
+                upscale=UpscalePrefill(
+                    input=upscale_input,
+                    output=upscale_output,
+                    model=upscale_model,
+                    scale=upscale_scale,
+                    realesrgan_bin=upscale_realesrgan_bin,
+                    models_dir=upscale_models_dir,
+                    keep_frames=upscale_keep_frames,
+                ),
+            )
+        self._initial_tab = prefill.initial_tab
+        self._initial_prompt = prefill.generate.prompt
+        self._initial_output = prefill.generate.output
+        self._initial_image = prefill.generate.image
+        self._prefill_batch_count = prefill.batch.count
+        self._prefill_batch_retries = prefill.batch.retries
+        self._prefill_batch_continue_on_error = prefill.batch.continue_on_error
+        self._extend_length = prefill.extend.length
+        self._extend_retries = prefill.extend.retries
+        self._extend_count = prefill.extend.count
+        self._extend_output = prefill.extend.output
+        self._extend_timestamp = prefill.extend.timestamp
+        self._extend_keep_segments = prefill.extend.keep_segments
+        self._extend_continue_on_error = prefill.extend.continue_on_error
+        self._extend_upscale = prefill.extend.upscale
+        self._extend_upscale_model = prefill.extend.upscale_model
+        self._extend_upscale_scale = prefill.extend.upscale_scale
+        self._extend_realesrgan_bin = prefill.extend.realesrgan_bin
+        self._extend_models_dir = prefill.extend.models_dir
+        self._upscale_input = prefill.upscale.input
+        self._upscale_output = prefill.upscale.output
+        self._upscale_model = prefill.upscale.model
+        self._upscale_scale = prefill.upscale.scale
+        self._upscale_realesrgan_bin = prefill.upscale.realesrgan_bin
+        self._upscale_models_dir = prefill.upscale.models_dir
+        self._upscale_keep_frames = prefill.upscale.keep_frames
         self._form = GenerateForm(self)
         self._validator = GenerateFormValidator(self._form)
         self._last_run_options: GenerateOptions | None = None
@@ -124,14 +167,9 @@ class LtxTuiApp(
     def compose(self) -> ComposeResult:
         yield Header()
         with TabbedContent(initial=self._initial_tab, id="tabs"):
-            with TabPane("Generate", id="generate"):
-                yield from self._compose_generate_tab()
-            with TabPane("Batch", id="batch"):
-                yield from self._compose_batch_tab()
-            with TabPane("Extend", id="extend"):
-                yield from self._compose_extend_tab()
-            with TabPane("Upscale", id="upscale"):
-                yield from self._compose_upscale_tab()
+            for spec in TAB_SPECS:
+                with TabPane(spec.title, id=spec.id):
+                    yield from getattr(self, spec.compose_method)()
         yield Static(
             "Run closes this TUI and executes the command in your terminal.",
             classes="field-hint",
@@ -145,40 +183,28 @@ class LtxTuiApp(
         yield Footer()
 
     def on_mount(self) -> None:
-        self._mount_generate_tab()
-        self._mount_batch_tab()
-        self._mount_extend_tab()
-        self._mount_upscale_tab()
+        for spec in TAB_SPECS:
+            getattr(self, spec.mount_method)()
 
     def _active_tab(self) -> TabId:
         active = self.query_one("#tabs", TabbedContent).active
-        if active in TAB_IDS:
+        if active in TAB_SPEC_BY_ID:
             return active  # type: ignore[return-value]
         return "generate"
 
     def _show_tab(self, tab_id: TabId) -> None:
         self.query_one("#tabs", TabbedContent).active = tab_id
 
-    def action_show_tab_generate(self) -> None:
-        self._show_tab("generate")
-
-    def action_show_tab_batch(self) -> None:
-        self._show_tab("batch")
-
-    def action_show_tab_extend(self) -> None:
-        self._show_tab("extend")
-
-    def action_show_tab_upscale(self) -> None:
-        self._show_tab("upscale")
+    def action_show_tab(self, tab_id: str) -> None:
+        if tab_id in TAB_SPEC_BY_ID:
+            self._show_tab(tab_id)  # type: ignore[arg-type]
 
     @on(TabbedContent.TabActivated, "#tabs")
     def tab_activated(self) -> None:
         self._set_status("")
-        tab = self._active_tab()
-        if tab == "batch":
-            self._refresh_batch_preview()
-        elif tab == "extend":
-            self._refresh_extend_preview()
+        spec = TAB_SPEC_BY_ID[self._active_tab()]
+        if spec.activate_method:
+            getattr(self, spec.activate_method)()
 
     @work(exclusive=True)
     async def _browse_into_input(
@@ -237,15 +263,15 @@ class LtxTuiApp(
         self._last_run_options = last_run
         self._set_last_run_available(True)
         self._clear_validation_highlights()
-        tab = self._active_tab()
-        if tab == "generate":
-            self.apply_last_generate(last_run)
-        elif tab == "batch":
-            self.apply_last_batch()
-        elif tab == "extend":
-            self.apply_last_extend(last_run)
-        else:
-            self.apply_last_upscale(last_run)
+        spec = TAB_SPEC_BY_ID[self._active_tab()]
+        if spec.apply_last_method is None:
+            self._set_status(f"Apply last run is not available for {spec.title}.")
+            return
+        apply_last = getattr(self, spec.apply_last_method)
+        if spec.apply_last_needs_last_run:
+            apply_last(last_run)
+            return
+        apply_last()
 
     @on(Button.Pressed, "#quit")
     def quit_pressed(self) -> None:
@@ -256,15 +282,8 @@ class LtxTuiApp(
 
     @on(Button.Pressed, "#run")
     def run_pressed(self) -> None:
-        tab = self._active_tab()
-        if tab == "generate":
-            self._start_generate_run()
-        elif tab == "batch":
-            self._start_batch_run()
-        elif tab == "extend":
-            self._start_extend_run()
-        else:
-            self._start_upscale_run()
+        spec = TAB_SPEC_BY_ID[self._active_tab()]
+        getattr(self, spec.start_run_method)()
 
 
 GenerateApp = LtxTuiApp
@@ -272,6 +291,7 @@ GenerateApp = LtxTuiApp
 
 def run_ltx_tui(
     *,
+    prefill: AppPrefill | None = None,
     initial_tab: TabId = "generate",
     prompt: str | None = None,
     output: Path | None = None,
@@ -304,6 +324,7 @@ def run_ltx_tui(
     Returns the exit code of the built command, or ``0`` if the user quit without running.
     """
     app = LtxTuiApp(
+        prefill=prefill,
         initial_tab=initial_tab,
         initial_prompt=prompt,
         initial_output=output,

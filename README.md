@@ -86,6 +86,23 @@ uv run ltx-tui-upscale --model realesr-animevideov3
 
 Without `--model`, uses FFmpeg Lanczos — fast and stable, but cannot reconstruct detail. With `--model`, extracts frames, runs [realesrgan-ncnn-vulkan](https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan), then encodes to 1080p. Download the macOS zip from [GitHub releases](https://github.com/xinntao/Real-ESRGAN/releases) and place the binary + `models/` folder on PATH.
 
+## Extending with new commands/tabs
+
+The TUI shell is now registry-driven:
+
+- Tab wiring lives in `ltx_tui_wrapper/tui/tab_registry.py` via `TabSpec`.
+- Runtime execution dispatch lives in `ltx_tui_wrapper/tui/run_actions.py` via `register_run_executor(...)`.
+- CLI-to-TUI prefill wiring lives in `ltx_tui_wrapper/tui/prefill.py` (`AppPrefill` + per-tab dataclasses).
+
+To add a new command/tab (for example, `extend from`) with minimal churn:
+
+1. Add a new tab mixin under `ltx_tui_wrapper/tui/tabs/` (compose/mount/start methods).
+2. Add a new run payload dataclass + executor in `ltx_tui_wrapper/tui/run_actions.py`.
+3. Register the tab once in `ltx_tui_wrapper/tui/tab_registry.py`.
+4. Add a CLI wrapper that builds `AppPrefill` and calls `run_ltx_tui(prefill=...)`.
+
+This keeps most existing tabs untouched and avoids adding new app-level switch branches.
+
 ## Generate options
 
 The TUI covers the full `ltx-2-mlx generate` surface:

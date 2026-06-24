@@ -61,8 +61,6 @@ EXTEND_UPSCALE_MODEL_PRESETS: tuple[tuple[str, str], ...] = (
     ("realesrnet-x4plus", "realesrnet-x4plus"),
 )
 
-TAB_IDS = ("generate", "batch", "extend", "upscale")
-
 APP_CSS = """
 Screen {
     layout: vertical;

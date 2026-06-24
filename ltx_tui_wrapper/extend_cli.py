@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from ltx_tui_wrapper.tui.app import run_ltx_tui
+from ltx_tui_wrapper.tui.prefill import AppPrefill, ExtendPrefill
 from ltx_tui_wrapper.upscale import AI_SCALES, NCNN_MODELS
 
 
@@ -83,23 +84,26 @@ def main() -> None:
         help="Pre-fill path to realesrgan-ncnn-vulkan models directory",
     )
     args = parser.parse_args()
+    prefill = AppPrefill(
+        initial_tab="extend",
+        extend=ExtendPrefill(
+            length=args.length,
+            retries=args.retries,
+            count=args.count,
+            output=args.output,
+            timestamp=args.timestamp,
+            keep_segments=args.keep_segments,
+            continue_on_error=args.continue_on_error,
+            upscale=args.upscale,
+            upscale_model=args.upscale_model,
+            upscale_scale=args.upscale_scale,
+            realesrgan_bin=args.realesrgan_bin,
+            models_dir=args.models_dir,
+        ),
+    )
 
     raise SystemExit(
-        run_ltx_tui(
-            initial_tab="extend",
-            extend_length=args.length,
-            extend_retries=args.retries,
-            extend_count=args.count,
-            extend_output=args.output,
-            extend_timestamp=args.timestamp,
-            extend_keep_segments=args.keep_segments,
-            extend_continue_on_error=args.continue_on_error,
-            extend_upscale=args.upscale,
-            extend_upscale_model=args.upscale_model,
-            extend_upscale_scale=args.upscale_scale,
-            extend_realesrgan_bin=args.realesrgan_bin,
-            extend_models_dir=args.models_dir,
-        )
+        run_ltx_tui(prefill=prefill)
     )
 
 

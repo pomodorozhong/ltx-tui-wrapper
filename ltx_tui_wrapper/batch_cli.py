@@ -93,6 +93,7 @@ def run_batch(
 
 def main() -> None:
     from ltx_tui_wrapper.tui.app import run_ltx_tui
+    from ltx_tui_wrapper.tui.prefill import AppPrefill, BatchPrefill
 
     parser = argparse.ArgumentParser(
         prog="ltx-tui-batch",
@@ -121,13 +122,16 @@ def main() -> None:
         help="Pre-fill continue on error",
     )
     args = parser.parse_args()
+    prefill = AppPrefill(
+        initial_tab="batch",
+        batch=BatchPrefill(
+            count=args.count,
+            retries=args.retries,
+            continue_on_error=args.continue_on_error,
+        ),
+    )
     raise SystemExit(
-        run_ltx_tui(
-            initial_tab="batch",
-            batch_count=args.count,
-            batch_retries=args.retries,
-            batch_continue_on_error=args.continue_on_error,
-        )
+        run_ltx_tui(prefill=prefill)
     )
 
 

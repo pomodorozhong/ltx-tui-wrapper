@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+
 from pathlib import Path
 
-from ltx_tui_wrapper.tui.app import run_generate_tui
+from ltx_tui_wrapper.tui.app import run_ltx_tui
+from ltx_tui_wrapper.tui.prefill import AppPrefill, GeneratePrefill
 
 
 def main() -> None:
@@ -31,12 +33,15 @@ def main() -> None:
         help="Pre-fill the reference image path",
     )
     args = parser.parse_args()
-    raise SystemExit(
-        run_generate_tui(
+    prefill = AppPrefill(
+        generate=GeneratePrefill(
             prompt=args.prompt,
             output=args.output,
             image=args.image,
         )
+    )
+    raise SystemExit(
+        run_ltx_tui(prefill=prefill)
     )
 
 
