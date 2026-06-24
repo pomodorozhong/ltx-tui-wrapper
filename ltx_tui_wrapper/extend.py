@@ -19,7 +19,8 @@ from ltx_tui_wrapper.options import GenerateOptions
 from ltx_tui_wrapper.output_paths import timestamped_output_path
 from ltx_tui_wrapper.parsing import build_command_argv, format_command
 from ltx_tui_wrapper.progress import print_failure, print_status_band
-from ltx_tui_wrapper.runner import execute_command, prevent_sleep
+from ltx_tui_wrapper.retries import run_with_retries
+from ltx_tui_wrapper.runner import prevent_sleep
 from ltx_tui_wrapper.upscale import upscale_image
 from ltx_tui_wrapper.video_metadata import (
     GENERATE_COMMANDS_METADATA_KEY,
@@ -190,32 +191,6 @@ def resolve_final_output_path(
     if timestamp:
         path = timestamped_output_path(path)
     return path
-
-
-def run_with_retries(
-    argv: list[str],
-    *,
-    max_retries: int,
-    label: str,
-) -> tuple[int, float]:
-    """Run *argv*, retrying up to *max_retries* times on non-zero exit."""
-    attempts = max(1, max_retries)
-    exit_code = 1
-    elapsed = 0.0
-    for attempt in range(1, attempts + 1):
-        started = time.perf_counter()
-        exit_code = execute_command(argv, echo=False)
-        elapsed = time.perf_counter() - started
-        if exit_code == 0:
-            return 0, elapsed
-        if attempt < attempts:
-            print_status_band(
-                f"{label} failed with exit code {exit_code} "
-                f"after {format_elapsed(elapsed)}; "
-                f"retrying ({attempt}/{attempts})…",
-                success=False,
-            )
-    return exit_code, elapsed
 
 
 def extend_video(

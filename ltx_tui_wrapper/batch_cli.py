@@ -12,7 +12,8 @@ from pathlib import Path
 from ltx_tui_wrapper.last_run import load_last_run
 from ltx_tui_wrapper.output_paths import timestamped_output_path
 from ltx_tui_wrapper.parsing import build_command_argv, format_command
-from ltx_tui_wrapper.runner import execute_command, prevent_sleep
+from ltx_tui_wrapper.retries import run_with_retries
+from ltx_tui_wrapper.runner import prevent_sleep
 from ltx_tui_wrapper.video_metadata import write_command_metadata
 
 
@@ -26,7 +27,12 @@ def format_elapsed(seconds: float) -> str:
     return f"{hours}h {minutes}m {secs}s"
 
 
-def run_batch(*, count: int, continue_on_error: bool = False) -> int:
+def run_batch(
+    *,
+    count: int,
+    max_retries: int = 1,
+    continue_on_error: bool = False,
+) -> int:
     """Run the saved generate command *count* times."""
     if count < 1:
         raise SystemExit("count must be at least 1")
@@ -53,9 +59,11 @@ def run_batch(*, count: int, continue_on_error: bool = False) -> int:
             )
             argv = build_command_argv(run_options)
             print(f"[{index}/{count}] {format_command(run_options)}", flush=True)
-            run_started = time.perf_counter()
-            exit_code = execute_command(argv, echo=False)
-            elapsed = time.perf_counter() - run_started
+            exit_code, elapsed = run_with_retries(
+                argv,
+                max_retries=max_retries,
+                label=f"Run {index}",
+            )
             if exit_code != 0:
                 failures += 1
                 print(
@@ -101,6 +109,13 @@ def main() -> None:
         help="Pre-fill the number of videos to generate",
     )
     parser.add_argument(
+        "-r",
+        "--retries",
+        type=int,
+        metavar="N",
+        help="Pre-fill retries per run (default: 1)",
+    )
+    parser.add_argument(
         "--continue-on-error",
         action="store_true",
         help="Pre-fill continue on error",
@@ -110,6 +125,7 @@ def main() -> None:
         run_ltx_tui(
             initial_tab="batch",
             batch_count=args.count,
+            batch_retries=args.retries,
             batch_continue_on_error=args.continue_on_error,
         )
     )

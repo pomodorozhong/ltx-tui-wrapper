@@ -62,6 +62,7 @@ class LtxTuiApp(
         initial_output: Path | None = None,
         initial_image: Path | None = None,
         batch_count: int | None = None,
+        batch_retries: int | None = None,
         batch_continue_on_error: bool | None = None,
         extend_length: str | None = None,
         extend_retries: int | None = None,
@@ -89,6 +90,7 @@ class LtxTuiApp(
         self._initial_output = initial_output
         self._initial_image = initial_image
         self._prefill_batch_count = batch_count
+        self._prefill_batch_retries = batch_retries
         self._prefill_batch_continue_on_error = batch_continue_on_error
         self._extend_length = extend_length
         self._extend_retries = extend_retries
@@ -275,6 +277,7 @@ def run_ltx_tui(
     output: Path | None = None,
     image: Path | None = None,
     batch_count: int | None = None,
+    batch_retries: int | None = None,
     batch_continue_on_error: bool | None = None,
     extend_length: str | None = None,
     extend_retries: int | None = None,
@@ -306,6 +309,7 @@ def run_ltx_tui(
         initial_output=output,
         initial_image=image,
         batch_count=batch_count,
+        batch_retries=batch_retries,
         batch_continue_on_error=batch_continue_on_error,
         extend_length=extend_length,
         extend_retries=extend_retries,

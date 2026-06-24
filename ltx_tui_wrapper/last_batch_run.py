@@ -12,13 +12,18 @@ LAST_BATCH_RUN_PATH = Path.home() / ".config" / "ltx-tui" / "last_batch.json"
 @dataclass(frozen=True)
 class BatchRunSettings:
     count: int
+    max_retries: int
     continue_on_error: bool
 
 
-def save_last_batch_run(*, count: int, continue_on_error: bool) -> None:
+def save_last_batch_run(*, count: int, max_retries: int, continue_on_error: bool) -> None:
     """Write batch tab settings to the user's config directory."""
     LAST_BATCH_RUN_PATH.parent.mkdir(parents=True, exist_ok=True)
-    data = {"count": count, "continue_on_error": continue_on_error}
+    data = {
+        "count": count,
+        "max_retries": max_retries,
+        "continue_on_error": continue_on_error,
+    }
     LAST_BATCH_RUN_PATH.write_text(json.dumps(data, indent=2) + "\n")
 
 
@@ -30,6 +35,7 @@ def load_last_batch_run() -> BatchRunSettings | None:
         data = json.loads(LAST_BATCH_RUN_PATH.read_text())
         return BatchRunSettings(
             count=int(data["count"]),
+            max_retries=int(data.get("max_retries", 1)),
             continue_on_error=bool(data["continue_on_error"]),
         )
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):

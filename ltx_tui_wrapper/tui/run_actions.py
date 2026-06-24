@@ -23,6 +23,7 @@ class GenerateRun:
 @dataclass(frozen=True)
 class BatchRun:
     count: int
+    max_retries: int
     continue_on_error: bool
 
 
@@ -67,7 +68,11 @@ def execute_run_action(action: RunAction) -> int:
         return exit_code
 
     if isinstance(action, BatchRun):
-        return run_batch(count=action.count, continue_on_error=action.continue_on_error)
+        return run_batch(
+            count=action.count,
+            max_retries=action.max_retries,
+            continue_on_error=action.continue_on_error,
+        )
 
     if isinstance(action, ExtendRun):
         return run_extend_batch(

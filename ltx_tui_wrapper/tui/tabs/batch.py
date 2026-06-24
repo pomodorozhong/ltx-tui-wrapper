@@ -26,6 +26,8 @@ class BatchTabMixin(TabMixinBase):
             )
             yield Label("Number of videos", classes="field-label")
             yield CopyInput(value="1", id="batch-count")
+            yield Label("Retries per run", classes="field-label")
+            yield CopyInput(value="1", id="batch-retries")
             yield Checkbox("Continue on error", id="batch-continue-on-error")
             yield Label("ltx-2-mlx generate command (per run)", classes="field-label")
             yield Static("", id="batch-command-preview", classes="command-preview")
@@ -33,6 +35,8 @@ class BatchTabMixin(TabMixinBase):
     def _mount_batch_tab(self) -> None:
         if self._prefill_batch_count is not None:
             self.query_one("#batch-count", CopyInput).value = str(self._prefill_batch_count)
+        if self._prefill_batch_retries is not None:
+            self.query_one("#batch-retries", CopyInput).value = str(self._prefill_batch_retries)
         if self._prefill_batch_continue_on_error is not None:
             self.query_one("#batch-continue-on-error", Checkbox).value = (
                 self._prefill_batch_continue_on_error
@@ -44,6 +48,7 @@ class BatchTabMixin(TabMixinBase):
         if settings is None:
             return False
         self.query_one("#batch-count", CopyInput).value = str(settings.count)
+        self.query_one("#batch-retries", CopyInput).value = str(settings.max_retries)
         self.query_one("#batch-continue-on-error", Checkbox).value = (
             settings.continue_on_error
         )
@@ -78,10 +83,23 @@ class BatchTabMixin(TabMixinBase):
         if count is None:
             return
 
+        max_retries = self._parse_positive_int(
+            self.query_one("#batch-retries", CopyInput).value,
+            field="Retries per run",
+            widget_id="#batch-retries",
+        )
+        if max_retries is None:
+            return
+
         continue_on_error = self.query_one("#batch-continue-on-error", Checkbox).value
-        save_last_batch_run(count=count, continue_on_error=continue_on_error)
+        save_last_batch_run(
+            count=count,
+            max_retries=max_retries,
+            continue_on_error=continue_on_error,
+        )
         self._pending_run = BatchRun(
             count=count,
+            max_retries=max_retries,
             continue_on_error=continue_on_error,
         )
         self.exit()
