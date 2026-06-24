@@ -13,6 +13,7 @@ from pathlib import Path
 
 from ltx_tui_wrapper.batch_cli import format_elapsed
 from ltx_tui_wrapper.last_run import load_last_run
+from ltx_tui_wrapper.output_paths import latest_output_path
 from ltx_tui_wrapper.progress import print_failure, print_status_band
 from ltx_tui_wrapper.runner import prevent_sleep
 
@@ -577,7 +578,7 @@ def upscale_video(
                 "No saved generate settings found. Run `ltx-tui` once and press Run first, "
                 "or pass `-i`."
             )
-        input_path = last_run.output
+        input_path = latest_output_path(last_run.output)
 
     if scale is not None and scale not in AI_SCALES:
         raise SystemExit(f"scale must be one of {', '.join(map(str, AI_SCALES))}")

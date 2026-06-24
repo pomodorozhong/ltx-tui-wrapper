@@ -11,6 +11,7 @@ from textual.widgets import Button, Checkbox, Label, Select, Static
 
 from ltx_tui_wrapper.last_run import load_last_run
 from ltx_tui_wrapper.options import GenerateOptions
+from ltx_tui_wrapper.output_paths import latest_output_path
 from ltx_tui_wrapper.tui.constants import NCNN_MODEL_PRESETS
 from ltx_tui_wrapper.tui.run_actions import UpscaleRun
 from ltx_tui_wrapper.tui.tabs.shared import TabMixinBase
@@ -75,9 +76,10 @@ class UpscaleTabMixin(TabMixinBase):
             self.query_one("#upscale-keep-frames", Checkbox).value = self._upscale_keep_frames
 
     def apply_last_upscale(self, last_run: GenerateOptions) -> None:
-        self.query_one("#upscale-input", CopyInput).value = last_run.output
+        input_path = latest_output_path(last_run.output)
+        self.query_one("#upscale-input", CopyInput).value = input_path
         self.query_one("#upscale-output", CopyInput).value = upscaled_output_path(
-            last_run.output
+            input_path
         )
         self._set_status("Applied last run output as upscale input.")
 
@@ -123,7 +125,7 @@ class UpscaleTabMixin(TabMixinBase):
                     "No saved generate output. Use Generate first or set an input video."
                 )
                 return
-            input_path = Path(last_run.output)
+            input_path = Path(latest_output_path(last_run.output))
             if not input_path.is_file():
                 self._set_validation_highlights(["#upscale-input"])
                 self._set_status(f"Last generate output not found: {input_path}")
