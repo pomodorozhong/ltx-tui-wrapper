@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import random
 import sys
 import time
 from dataclasses import replace
@@ -40,9 +41,15 @@ def run_batch(*, count: int, continue_on_error: bool = False) -> int:
     batch_started = time.perf_counter()
     with prevent_sleep():
         for index in range(1, count + 1):
+            seed = (
+                random.randint(0, 2**31 - 1)
+                if base_options.seed == -1
+                else base_options.seed
+            )
             run_options = replace(
                 base_options,
                 output=timestamped_output_path(base_options.output),
+                seed=seed,
             )
             argv = build_command_argv(run_options)
             print(f"[{index}/{count}] {format_command(run_options)}", flush=True)
