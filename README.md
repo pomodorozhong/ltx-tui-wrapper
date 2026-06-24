@@ -66,6 +66,28 @@ uv run ltx-tui-extend -l 60 -n 10 --continue-on-error
 
 Duration accepts seconds (`60`), suffixed seconds (`90s`), or minutes (`1.5m`).
 
+### Extend from an existing video
+
+Continue from a previously generated video by reading its embedded `ltx-tui` metadata, reconstructing the original `ltx-2-mlx generate` arguments, and chaining new segments from the input video's last frame. The input video is kept as the first segment.
+
+Accepts a single file or a folder of batch candidates. Re-running the same folder skips videos that already have an extended output (`<stem>_extended.mp4` or `<stem>_extended_<timestamp>.mp4`), so interrupted runs are resumable.
+
+```bash
+# Single candidate
+uv run ltx-tui-extend-from -i tmp/cat3_20260624_003130.mp4 -l 60
+
+# Entire folder of batch candidates (resumable)
+uv run ltx-tui-extend-from -i tmp/ -l 60 --continue-on-error
+
+# Re-run after interruption — already-extended files are skipped
+uv run ltx-tui-extend-from -i tmp/ -l 60
+
+# AI-upscale each last frame before the next segment
+uv run ltx-tui-extend-from -i candidate.mp4 -l 90s --upscale
+```
+
+`ltx-tui-extend-from` requires input videos to contain embedded metadata written by `ltx-tui`.
+
 ### Upscale to 1080p
 
 Scale a video to strict 1920×1080, preserving aspect ratio and padding to 16:9. Requires `ffmpeg` and `ffprobe` on PATH.

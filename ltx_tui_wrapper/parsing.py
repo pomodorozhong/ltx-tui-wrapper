@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import random
 import shlex
 from collections.abc import Callable
@@ -12,6 +13,11 @@ from ltx_tui_wrapper.options import GenerateOptions
 
 class GenerateParseError(Exception):
     """Invalid generate option values."""
+
+
+class _GenerateArgParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:  # pragma: no cover - argparse hook
+        raise GenerateParseError(message)
 
 
 def parse_image_specs(specs: tuple[str, ...] | None) -> list[ImageConditioningInput] | None:
@@ -137,3 +143,90 @@ def build_command_argv(options: GenerateOptions) -> list[str]:
 def format_command(options: GenerateOptions) -> str:
     """Return a copy-pasteable command string."""
     return shlex.join(build_command_argv(options))
+
+
+def _strip_generate_prefix(argv: list[str]) -> list[str]:
+    if len(argv) >= 2 and argv[0] == "ltx-2-mlx" and argv[1] == "generate":
+        return argv[2:]
+    if argv and argv[0] == "generate":
+        return argv[1:]
+    return argv
+
+
+def parse_generate_argv(argv: list[str]) -> GenerateOptions:
+    """Parse a ``ltx-2-mlx generate`` argv back into :class:`GenerateOptions`."""
+    parser = _GenerateArgParser(add_help=False)
+    parser.add_argument("-p", "--prompt", required=True)
+    parser.add_argument("-o", "--output", required=True)
+    parser.add_argument("--frame-rate", type=float, default=24)
+    parser.add_argument("-m", "--model", default="dgrauet/ltx-2.3-mlx-q8")
+    parser.add_argument("--gemma", default="mlx-community/gemma-3-12b-it-4bit")
+    parser.add_argument("-s", "--seed", type=int, default=-1)
+    parser.add_argument("-q", "--quiet", action="store_true")
+    parser.add_argument("-H", "--height", type=int, default=480)
+    parser.add_argument("-W", "--width", type=int, default=704)
+    parser.add_argument("-f", "--frames", type=int, default=97)
+    parser.add_argument("--tile-frames", type=int, default=1)
+    parser.add_argument("--tile-spatial", type=int, default=1)
+    parser.add_argument("--tile-overlap", type=int, default=2)
+    parser.add_argument("--low-ram", action="store_true")
+    parser.add_argument("-i", "--image", action="append", default=[])
+    parser.add_argument("--lora", nargs=2, action="append", default=[])
+    parser.add_argument("--steps", type=int)
+    parser.add_argument("--stage1-steps", type=int)
+    parser.add_argument("--stage2-steps", type=int)
+    parser.add_argument("--cfg-scale", type=float)
+    parser.add_argument("--stg-scale", type=float)
+    parser.add_argument("--dev-transformer", default="transformer-dev.safetensors")
+    parser.add_argument(
+        "--distilled-lora", default="ltx-2.3-22b-distilled-lora-384.safetensors"
+    )
+    parser.add_argument("--distilled-lora-strength", type=float, default=1.0)
+    parser.add_argument("--enable-teacache", action="store_true")
+    parser.add_argument("--teacache-thresh", type=float)
+    parser.add_argument("--enhance-prompt", action="store_true")
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--two-stage", action="store_true")
+    mode_group.add_argument("--two-stages-hq", action="store_true")
+    mode_group.add_argument("--distilled", action="store_true")
+    mode_group.add_argument("--one-stage", action="store_true")
+    parsed = parser.parse_args(_strip_generate_prefix(argv))
+
+    pipeline_mode = "two_stage"
+    if parsed.two_stages_hq:
+        pipeline_mode = "two_stages_hq"
+    elif parsed.distilled:
+        pipeline_mode = "distilled"
+    elif parsed.one_stage:
+        pipeline_mode = "one_stage"
+
+    return GenerateOptions(
+        prompt=parsed.prompt,
+        output=parsed.output,
+        frame_rate=parsed.frame_rate,
+        pipeline_mode=pipeline_mode,
+        model=parsed.model,
+        gemma=parsed.gemma,
+        seed=parsed.seed,
+        quiet=parsed.quiet,
+        height=parsed.height,
+        width=parsed.width,
+        frames=parsed.frames,
+        tile_frames=parsed.tile_frames,
+        tile_spatial=parsed.tile_spatial,
+        tile_overlap=parsed.tile_overlap,
+        low_ram=parsed.low_ram,
+        image_specs=tuple(parsed.image),
+        lora_specs=tuple(" ".join(pair) for pair in parsed.lora),
+        steps=parsed.steps,
+        stage1_steps=parsed.stage1_steps,
+        stage2_steps=parsed.stage2_steps,
+        cfg_scale=parsed.cfg_scale,
+        stg_scale=parsed.stg_scale,
+        dev_transformer=parsed.dev_transformer,
+        distilled_lora=parsed.distilled_lora,
+        distilled_lora_strength=parsed.distilled_lora_strength,
+        enable_teacache=parsed.enable_teacache,
+        teacache_thresh=parsed.teacache_thresh,
+        enhance_prompt=parsed.enhance_prompt,
+    )

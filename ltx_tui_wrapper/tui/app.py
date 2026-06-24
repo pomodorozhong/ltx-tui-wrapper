@@ -23,6 +23,7 @@ from ltx_tui_wrapper.tui.prefill import (
     AppPrefill,
     BatchPrefill,
     ExtendPrefill,
+    ExtendFromPrefill,
     GeneratePrefill,
     UpscalePrefill,
 )
@@ -32,6 +33,7 @@ from ltx_tui_wrapper.tui.tab_registry import TAB_SPEC_BY_ID, TAB_SPECS, TabId
 from ltx_tui_wrapper.tui.tabs import (
     BatchTabMixin,
     ExtendTabMixin,
+    ExtendFromTabMixin,
     GenerateTabMixin,
     TabHelpersMixin,
     UpscaleTabMixin,
@@ -45,6 +47,7 @@ class LtxTuiApp(
     GenerateTabMixin,
     BatchTabMixin,
     ExtendTabMixin,
+    ExtendFromTabMixin,
     UpscaleTabMixin,
     App[None],
 ):
@@ -82,6 +85,17 @@ class LtxTuiApp(
         extend_upscale_scale: int | None = None,
         extend_realesrgan_bin: str | None = None,
         extend_models_dir: str | None = None,
+        extend_from_input: str | None = None,
+        extend_from_length: str | None = None,
+        extend_from_retries: int | None = None,
+        extend_from_output: str | None = None,
+        extend_from_keep_segments: bool | None = None,
+        extend_from_continue_on_error: bool | None = None,
+        extend_from_upscale: bool | None = None,
+        extend_from_upscale_model: str | None = None,
+        extend_from_upscale_scale: int | None = None,
+        extend_from_realesrgan_bin: str | None = None,
+        extend_from_models_dir: str | None = None,
         upscale_input: str | None = None,
         upscale_output: str | None = None,
         upscale_model: str | None = None,
@@ -118,6 +132,19 @@ class LtxTuiApp(
                     realesrgan_bin=extend_realesrgan_bin,
                     models_dir=extend_models_dir,
                 ),
+                extend_from=ExtendFromPrefill(
+                    input_path=extend_from_input,
+                    length=extend_from_length,
+                    retries=extend_from_retries,
+                    output=extend_from_output,
+                    keep_segments=extend_from_keep_segments,
+                    continue_on_error=extend_from_continue_on_error,
+                    upscale=extend_from_upscale,
+                    upscale_model=extend_from_upscale_model,
+                    upscale_scale=extend_from_upscale_scale,
+                    realesrgan_bin=extend_from_realesrgan_bin,
+                    models_dir=extend_from_models_dir,
+                ),
                 upscale=UpscalePrefill(
                     input=upscale_input,
                     output=upscale_output,
@@ -147,6 +174,17 @@ class LtxTuiApp(
         self._extend_upscale_scale = prefill.extend.upscale_scale
         self._extend_realesrgan_bin = prefill.extend.realesrgan_bin
         self._extend_models_dir = prefill.extend.models_dir
+        self._extend_from_input = prefill.extend_from.input_path
+        self._extend_from_length = prefill.extend_from.length
+        self._extend_from_retries = prefill.extend_from.retries
+        self._extend_from_output = prefill.extend_from.output
+        self._extend_from_keep_segments = prefill.extend_from.keep_segments
+        self._extend_from_continue_on_error = prefill.extend_from.continue_on_error
+        self._extend_from_upscale = prefill.extend_from.upscale
+        self._extend_from_upscale_model = prefill.extend_from.upscale_model
+        self._extend_from_upscale_scale = prefill.extend_from.upscale_scale
+        self._extend_from_realesrgan_bin = prefill.extend_from.realesrgan_bin
+        self._extend_from_models_dir = prefill.extend_from.models_dir
         self._upscale_input = prefill.upscale.input
         self._upscale_output = prefill.upscale.output
         self._upscale_model = prefill.upscale.model
@@ -215,6 +253,7 @@ class LtxTuiApp(
         save: bool = False,
         extensions: tuple[str, ...] | None = None,
         default_name: str = "output.mp4",
+        allow_directory: bool = False,
     ) -> None:
         if save:
             start_dir = start if start.is_dir() else start.parent
@@ -234,7 +273,9 @@ class LtxTuiApp(
         if picked is None:
             if native_file_dialog_available():
                 return
-            picked = await self.push_screen_wait(FilePickScreen(start=start))
+            picked = await self.push_screen_wait(
+                FilePickScreen(start=start, allow_directory=allow_directory)
+            )
             if picked is None:
                 return
             if save and picked.is_dir():
@@ -256,22 +297,23 @@ class LtxTuiApp(
     @on(Button.Pressed, "#apply-last")
     def apply_last_pressed(self) -> None:
         last_run = load_last_run()
-        if last_run is None:
-            self._set_status("No saved generate settings found.")
-            return
-
-        self._last_run_options = last_run
-        self._set_last_run_available(True)
-        self._clear_validation_highlights()
         spec = TAB_SPEC_BY_ID[self._active_tab()]
         if spec.apply_last_method is None:
             self._set_status(f"Apply last run is not available for {spec.title}.")
             return
+        if spec.apply_last_needs_last_run and last_run is None:
+            self._set_status("No saved generate settings found.")
+            return
+
+        if last_run is not None:
+            self._last_run_options = last_run
+            self._set_last_run_available(True)
+        self._clear_validation_highlights()
         apply_last = getattr(self, spec.apply_last_method)
         if spec.apply_last_needs_last_run:
             apply_last(last_run)
             return
-        apply_last()
+        apply_last(last_run)
 
     @on(Button.Pressed, "#quit")
     def quit_pressed(self) -> None:
@@ -311,6 +353,17 @@ def run_ltx_tui(
     extend_upscale_scale: int | None = None,
     extend_realesrgan_bin: str | None = None,
     extend_models_dir: str | None = None,
+    extend_from_input: str | None = None,
+    extend_from_length: str | None = None,
+    extend_from_retries: int | None = None,
+    extend_from_output: str | None = None,
+    extend_from_keep_segments: bool | None = None,
+    extend_from_continue_on_error: bool | None = None,
+    extend_from_upscale: bool | None = None,
+    extend_from_upscale_model: str | None = None,
+    extend_from_upscale_scale: int | None = None,
+    extend_from_realesrgan_bin: str | None = None,
+    extend_from_models_dir: str | None = None,
     upscale_input: str | None = None,
     upscale_output: str | None = None,
     upscale_model: str | None = None,
@@ -344,6 +397,17 @@ def run_ltx_tui(
         extend_upscale_scale=extend_upscale_scale,
         extend_realesrgan_bin=extend_realesrgan_bin,
         extend_models_dir=extend_models_dir,
+        extend_from_input=extend_from_input,
+        extend_from_length=extend_from_length,
+        extend_from_retries=extend_from_retries,
+        extend_from_output=extend_from_output,
+        extend_from_keep_segments=extend_from_keep_segments,
+        extend_from_continue_on_error=extend_from_continue_on_error,
+        extend_from_upscale=extend_from_upscale,
+        extend_from_upscale_model=extend_from_upscale_model,
+        extend_from_upscale_scale=extend_from_upscale_scale,
+        extend_from_realesrgan_bin=extend_from_realesrgan_bin,
+        extend_from_models_dir=extend_from_models_dir,
         upscale_input=upscale_input,
         upscale_output=upscale_output,
         upscale_model=upscale_model,

@@ -11,13 +11,19 @@ from textual.widgets import Button, DirectoryTree
 
 
 class FilePickScreen(ModalScreen[Path | None]):
-    """Pick a file from the filesystem."""
+    """Pick a file or directory from the filesystem."""
 
     BINDINGS = [("escape", "dismiss", "Cancel")]
 
-    def __init__(self, start: Path | None = None) -> None:
+    def __init__(
+        self,
+        start: Path | None = None,
+        *,
+        allow_directory: bool = False,
+    ) -> None:
         super().__init__()
         self._start = start or Path.cwd()
+        self._allow_directory = allow_directory
 
     def compose(self):
         yield DirectoryTree(str(self._start))
@@ -33,6 +39,8 @@ class FilePickScreen(ModalScreen[Path | None]):
         if node is None or node.data is None:
             return None
         path = node.data.path
+        if self._allow_directory and path.is_dir():
+            return path
         return path if path.is_file() else None
 
     @on(Button.Pressed, "#pick-select")

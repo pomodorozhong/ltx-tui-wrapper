@@ -8,6 +8,7 @@ from typing import Callable, TypeVar
 
 from ltx_tui_wrapper.batch_cli import run_batch
 from ltx_tui_wrapper.extend import run_extend_batch
+from ltx_tui_wrapper.extend_from import run_extend_from_inputs
 from ltx_tui_wrapper.options import GenerateOptions
 from ltx_tui_wrapper.upscale import upscale_video
 
@@ -52,7 +53,22 @@ class UpscaleRun:
     keep_frames: bool
 
 
-RunAction = GenerateRun | BatchRun | ExtendRun | UpscaleRun
+@dataclass(frozen=True)
+class ExtendFromRun:
+    input_path: str
+    target_duration: float
+    max_retries: int
+    final_output: str | None
+    keep_segments: bool
+    continue_on_error: bool
+    upscale: bool
+    upscale_model: str
+    upscale_scale: int | None
+    realesrgan_bin: str | None
+    models_dir: str | None
+
+
+RunAction = GenerateRun | BatchRun | ExtendRun | UpscaleRun | ExtendFromRun
 
 RunExecutor = Callable[[RunAction], int]
 _EXECUTORS: dict[type[RunAction], RunExecutor] = {}
@@ -100,6 +116,23 @@ def _execute_extend(action: ExtendRun) -> int:
         count=action.count,
         final_output=action.final_output,
         timestamp=action.timestamp,
+        keep_segments=action.keep_segments,
+        continue_on_error=action.continue_on_error,
+        upscale=action.upscale,
+        upscale_model=action.upscale_model,
+        upscale_scale=action.upscale_scale,
+        realesrgan_bin=action.realesrgan_bin,
+        models_dir=action.models_dir,
+    )
+
+
+@register_run_executor(ExtendFromRun)
+def _execute_extend_from(action: ExtendFromRun) -> int:
+    return run_extend_from_inputs(
+        input_path=Path(action.input_path),
+        target_duration=action.target_duration,
+        max_retries=action.max_retries,
+        final_output=action.final_output,
         keep_segments=action.keep_segments,
         continue_on_error=action.continue_on_error,
         upscale=action.upscale,

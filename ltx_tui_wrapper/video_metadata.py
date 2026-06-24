@@ -92,3 +92,48 @@ def write_metadata(path: Path, tags: dict[str, str]) -> None:
         temp_path.replace(path)
     finally:
         temp_path.unlink(missing_ok=True)
+
+
+def read_metadata(path: Path) -> dict[str, str]:
+    """Return ffprobe format tags for *path*."""
+    if not path.is_file():
+        return {}
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe is None:
+        return {}
+    result = subprocess.run(
+        [
+            ffprobe,
+            "-v",
+            "error",
+            "-show_entries",
+            "format_tags",
+            "-of",
+            "json",
+            str(path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return {}
+    try:
+        import json
+
+        payload = json.loads(result.stdout or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    tags = payload.get("format", {}).get("tags", {})
+    if not isinstance(tags, dict):
+        return {}
+    return {str(key): str(value) for key, value in tags.items()}
+
+
+def read_command_metadata(path: Path) -> str | None:
+    """Read the stored command metadata value from *path*, if present."""
+    tags = read_metadata(path)
+    value = tags.get(METADATA_KEY)
+    if not value:
+        return None
+    return value

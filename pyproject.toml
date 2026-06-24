@@ -14,6 +14,7 @@ dependencies = [
 ltx-tui = "ltx_tui_wrapper.cli:main"
 ltx-tui-batch = "ltx_tui_wrapper.batch_cli:main"
 ltx-tui-extend = "ltx_tui_wrapper.extend_cli:main"
+ltx-tui-extend-from = "ltx_tui_wrapper.extend_from_cli:main"
 ltx-tui-upscale = "ltx_tui_wrapper.upscale_cli:main"
 
 [tool.uv]

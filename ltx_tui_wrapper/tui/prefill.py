@@ -39,6 +39,21 @@ class ExtendPrefill:
 
 
 @dataclass(frozen=True)
+class ExtendFromPrefill:
+    input_path: str | None = None
+    length: str | None = None
+    retries: int | None = None
+    output: str | None = None
+    keep_segments: bool | None = None
+    continue_on_error: bool | None = None
+    upscale: bool | None = None
+    upscale_model: str | None = None
+    upscale_scale: int | None = None
+    realesrgan_bin: str | None = None
+    models_dir: str | None = None
+
+
+@dataclass(frozen=True)
 class UpscalePrefill:
     input: str | None = None
     output: str | None = None
@@ -55,4 +70,5 @@ class AppPrefill:
     generate: GeneratePrefill = field(default_factory=GeneratePrefill)
     batch: BatchPrefill = field(default_factory=BatchPrefill)
     extend: ExtendPrefill = field(default_factory=ExtendPrefill)
+    extend_from: ExtendFromPrefill = field(default_factory=ExtendFromPrefill)
     upscale: UpscalePrefill = field(default_factory=UpscalePrefill)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from ltx_tui_wrapper.extend_from import load_generate_options_from_video
 from ltx_tui_wrapper.last_run import load_last_run
 from ltx_tui_wrapper.output_paths import timestamped_output_path
 from ltx_tui_wrapper.parsing import format_command
@@ -33,4 +34,46 @@ def extend_first_segment_command_preview() -> str:
         f"{command}\n\n"
         "(Later segments reuse these settings with -i <last-frame> until the "
         "target duration is exceeded.)"
+    )
+
+
+def extend_from_command_preview(input_path: str) -> str:
+    """Return the first new-segment command for extend-from runs."""
+    from pathlib import Path
+
+    from ltx_tui_wrapper.output_paths import discover_extend_from_inputs, extended_output_exists
+
+    path = Path(input_path).expanduser()
+    if path.is_dir():
+        try:
+            videos = discover_extend_from_inputs(path)
+        except SystemExit:
+            return f"No candidate videos found in {path}"
+        for video in videos:
+            if extended_output_exists(video) is None:
+                path = video
+                break
+        else:
+            return "All videos in this folder already have extended outputs."
+    elif not path.is_file():
+        return f"Input not found: {path}"
+
+    if extended_output_exists(path) is not None:
+        return f"{path.name} already has an extended output and would be skipped."
+
+    try:
+        base = load_generate_options_from_video(path)
+    except ValueError as exc:
+        return str(exc)
+
+    preview_options = replace(
+        base,
+        output="<segment>.mp4",
+        image_specs=("<input-last-frame.png>",),
+    )
+    command = format_command(preview_options)
+    return (
+        f"{command}\n\n"
+        "(The input video is kept as the first segment; new segments chain from "
+        "its last frame until the target duration is exceeded.)"
     )

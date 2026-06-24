@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-TabId = Literal["generate", "batch", "extend", "upscale"]
+TabId = Literal["generate", "batch", "extend", "extend_from", "upscale"]
 
 
 @dataclass(frozen=True)
@@ -56,9 +56,19 @@ TAB_SPECS: tuple[TabSpec, ...] = (
         activate_method="_refresh_extend_preview",
     ),
     TabSpec(
+        id="extend_from",
+        title="Extend From",
+        hotkey="ctrl+4",
+        compose_method="_compose_extend_from_tab",
+        mount_method="_mount_extend_from_tab",
+        start_run_method="_start_extend_from_run",
+        apply_last_method="apply_last_extend_from",
+        activate_method="_refresh_extend_from_preview",
+    ),
+    TabSpec(
         id="upscale",
         title="Upscale",
-        hotkey="ctrl+4",
+        hotkey="ctrl+5",
         compose_method="_compose_upscale_tab",
         mount_method="_mount_upscale_tab",
         start_run_method="_start_upscale_run",
