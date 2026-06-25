@@ -15,7 +15,8 @@ def main() -> None:
         description=(
             "Extend From tab in ltx-tui: continue from an existing generated video or "
             "folder of videos by reading embedded metadata and chaining new segments. "
-            "Re-running a folder skips videos that already have extended outputs."
+            "Re-running a folder skips videos that already have extended outputs. "
+            "Interrupted segment generation resumes from segments/<stem>/."
         ),
     )
     parser.add_argument(

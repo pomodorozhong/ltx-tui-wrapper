@@ -11,6 +11,7 @@ _TIMESTAMP_SUFFIX = re.compile(r"^\d{8}_\d{6}$")
 _VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v"}
 EXTEND_FROM_EXTENDED_DIR = "extended"
 EXTEND_FROM_ORIGINAL_DIR = "original"
+EXTEND_FROM_SEGMENTS_DIR = "segments"
 
 
 def timestamp_suffix(when: datetime | None = None) -> str:
@@ -61,6 +62,12 @@ def extend_from_output_path(input_video: str) -> str:
     path = Path(input_video).expanduser()
     extended_dir = extend_from_base_dir(path) / EXTEND_FROM_EXTENDED_DIR
     return str(extended_dir / f"{path.stem}_extended{path.suffix}")
+
+
+def extend_from_segments_dir(input_video: Path) -> Path:
+    """Return the persistent work directory for in-progress extend-from segments."""
+    input_video = input_video.expanduser()
+    return extend_from_base_dir(input_video) / EXTEND_FROM_SEGMENTS_DIR / input_video.stem
 
 
 def extended_output_exists(input_video: Path) -> Path | None:

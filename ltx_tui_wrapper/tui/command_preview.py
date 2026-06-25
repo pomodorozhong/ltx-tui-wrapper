@@ -41,7 +41,12 @@ def extend_from_command_preview(input_path: str) -> str:
     """Return the first new-segment command for extend-from runs."""
     from pathlib import Path
 
-    from ltx_tui_wrapper.output_paths import discover_extend_from_inputs, extended_output_exists
+    from ltx_tui_wrapper.extend_from import scan_extend_from_segments
+    from ltx_tui_wrapper.output_paths import (
+        discover_extend_from_inputs,
+        extend_from_segments_dir,
+        extended_output_exists,
+    )
 
     path = Path(input_path).expanduser()
     if path.is_dir():
@@ -61,6 +66,14 @@ def extend_from_command_preview(input_path: str) -> str:
     if extended_output_exists(path) is not None:
         return f"{path.name} already has an extended output and would be skipped."
 
+    completed = scan_extend_from_segments(extend_from_segments_dir(path))
+    resume_note = ""
+    if completed:
+        resume_note = (
+            f"\n\n({len(completed)} segment(s) already on disk; "
+            f"next run will resume from segment {len(completed) + 1}.)"
+        )
+
     try:
         base = load_generate_options_from_video(path)
     except ValueError as exc:
@@ -76,4 +89,5 @@ def extend_from_command_preview(input_path: str) -> str:
         f"{command}\n\n"
         "(The input video is kept as the first segment; new segments chain from "
         "its last frame until the target duration is exceeded.)"
+        f"{resume_note}"
     )

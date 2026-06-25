@@ -33,7 +33,8 @@ class ExtendFromTabMixin(TabMixinBase):
         with VerticalScroll():
             yield Static(
                 "Continue an existing generated video using its embedded settings. "
-                "Folder input extends every video inside; already-extended files are skipped.",
+                "Folder input extends every video inside; already-extended files are skipped. "
+                "Interrupted segment runs resume from segments/<stem>/.",
                 classes="field-hint",
             )
             yield Label("Input video or folder", classes="field-label")

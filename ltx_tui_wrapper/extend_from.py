@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import re
 import shlex
 import shutil
 import sys
-import tempfile
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -22,6 +23,7 @@ from ltx_tui_wrapper.options import GenerateOptions
 from ltx_tui_wrapper.output_paths import (
     archive_extend_from_original,
     discover_extend_from_inputs,
+    extend_from_segments_dir,
     extended_output_exists,
     resolve_extend_from_output_path,
 )
@@ -47,6 +49,8 @@ from ltx_tui_wrapper.video_metadata import (
 
 EXTEND_FROM_OK = 0
 EXTEND_FROM_SKIP_LONG = 2
+_SEGMENT_FILE = re.compile(r"^segment_(\d{3})\.mp4$")
+_PROGRESS_FILE = "progress.json"
 
 
 def load_generate_options_from_video(video_path: str | Path) -> GenerateOptions:
@@ -72,6 +76,138 @@ def load_generate_options_from_video(video_path: str | Path) -> GenerateOptions:
         ) from exc
 
 
+def _write_extend_progress(
+    work_dir: Path,
+    *,
+    input_video: Path,
+    segment_commands: list[list[str]],
+) -> None:
+    work_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "input_video": str(input_video.resolve()),
+        "segment_commands": [shlex.join(command) for command in segment_commands],
+    }
+    (work_dir / _PROGRESS_FILE).write_text(json.dumps(payload, indent=2) + "\n")
+
+
+def _read_extend_progress(
+    work_dir: Path,
+) -> tuple[Path | None, list[list[str]]]:
+    progress_path = work_dir / _PROGRESS_FILE
+    if not progress_path.is_file():
+        return None, []
+
+    try:
+        payload = json.loads(progress_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None, []
+
+    input_video: Path | None = None
+    raw_input = payload.get("input_video")
+    if isinstance(raw_input, str) and raw_input:
+        input_video = Path(raw_input)
+
+    segment_commands: list[list[str]] = []
+    raw_commands = payload.get("segment_commands")
+    if isinstance(raw_commands, list):
+        for item in raw_commands:
+            if not isinstance(item, str) or not item:
+                continue
+            try:
+                segment_commands.append(shlex.split(item))
+            except ValueError:
+                continue
+
+    return input_video, segment_commands
+
+
+def scan_extend_from_segments(work_dir: Path) -> list[Path]:
+    """Return completed segment paths ``segment_001`` through ``segment_NNN``."""
+    if not work_dir.is_dir():
+        return []
+
+    indexed: dict[int, Path] = {}
+    for path in work_dir.iterdir():
+        if not path.is_file():
+            continue
+        match = _SEGMENT_FILE.match(path.name)
+        if match:
+            indexed[int(match.group(1))] = path
+
+    completed: list[Path] = []
+    index = 1
+    while index in indexed:
+        path = indexed[index]
+        try:
+            probe_video_duration(path)
+        except RuntimeError:
+            path.unlink(missing_ok=True)
+            break
+        completed.append(path)
+        index += 1
+
+    for orphan_index, orphan_path in indexed.items():
+        if orphan_index > len(completed):
+            orphan_path.unlink(missing_ok=True)
+
+    return completed
+
+
+def _segment_commands_from_paths(segments: list[Path]) -> list[list[str]]:
+    commands: list[list[str]] = []
+    for segment in segments:
+        metadata = read_command_metadata(segment)
+        if metadata is None:
+            continue
+        try:
+            commands.append(shlex.split(metadata))
+        except ValueError:
+            continue
+    return commands
+
+
+def _prepare_segment_frame(
+    *,
+    source_video: Path,
+    work_dir: Path,
+    frame_basename: str,
+    upscale: bool,
+    upscale_model: str,
+    upscale_scale: int | None,
+    realesrgan_bin: str | None,
+    models_dir: str | None,
+    failure_label: str,
+) -> Path | None:
+    if upscale:
+        upscaled_frame_path = work_dir / f"{frame_basename}_upscaled.png"
+        if upscaled_frame_path.is_file():
+            return upscaled_frame_path
+    else:
+        frame_path = work_dir / f"{frame_basename}.png"
+        if frame_path.is_file():
+            return frame_path
+
+    frame_path = work_dir / f"{frame_basename}.png"
+    extract_last_frame(source_video, frame_path)
+    if not upscale:
+        return frame_path
+
+    upscaled_frame_path = work_dir / f"{frame_basename}_upscaled.png"
+    try:
+        upscale_image(
+            frame_path,
+            upscaled_frame_path,
+            model=upscale_model,
+            scale=upscale_scale,
+            realesrgan_bin=realesrgan_bin,
+            models_dir=models_dir,
+        )
+    except (RuntimeError, ValueError) as exc:
+        print_failure(failure_label, details=str(exc))
+        return None
+    return upscaled_frame_path
+
+
 def extend_video_from(
     *,
     input_video: Path,
@@ -95,130 +231,166 @@ def extend_video_from(
     _require_tool("ffmpeg")
     _require_tool("ffprobe")
 
-    segments: list[Path] = [input_video]
-    generated_segments: list[Path] = []
-    segment_commands: list[list[str]] = []
-    total_duration = probe_video_duration(input_video)
-    segment_index = 0
-    work_dir = Path(tempfile.mkdtemp(prefix="ltx-tui-extend-from-"))
+    work_dir = extend_from_segments_dir(input_video)
+    work_dir.mkdir(parents=True, exist_ok=True)
     extend_started = time.perf_counter()
+    exit_code = 1
 
     print(
         f"Extending {input_video.name} to > {target_duration:.1f}s "
         f"(retry up to {max_retries} time(s) per segment, seed {base_options.seed}).",
         flush=True,
     )
-    print(
-        f"Input duration: {total_duration:.2f}s. Working directory: {work_dir}",
-        flush=True,
-    )
+    print(f"Working directory: {work_dir}", flush=True)
 
-    if total_duration >= target_duration:
+    progress_input, segment_commands = _read_extend_progress(work_dir)
+    if progress_input is not None and progress_input.resolve() != input_video:
         print(
-            f"Skipping {input_video.name}: already {total_duration:.2f}s "
-            f"(target {target_duration:.1f}s).",
+            f"Warning: progress file references {progress_input.name}, "
+            f"but continuing with {input_video.name}.",
             flush=True,
         )
-        shutil.rmtree(work_dir, ignore_errors=True)
-        return EXTEND_FROM_SKIP_LONG
+
+    completed_segments = scan_extend_from_segments(work_dir)
+    segment_index = len(completed_segments)
+    segments: list[Path] = [input_video, *completed_segments]
+    input_duration = probe_video_duration(input_video)
+    total_duration = input_duration + sum(
+        probe_video_duration(segment) for segment in completed_segments
+    )
+    if len(segment_commands) < len(completed_segments):
+        segment_commands = _segment_commands_from_paths(completed_segments)
+
+    if segment_index > 0:
+        print(
+            f"Resuming: {segment_index} segment(s) already complete "
+            f"({total_duration:.2f}s / {target_duration:.1f}s).",
+            flush=True,
+        )
+    else:
+        print(f"Input duration: {input_duration:.2f}s.", flush=True)
+
+    if total_duration >= target_duration:
+        if segment_index == 0:
+            print(
+                f"Skipping {input_video.name}: already {total_duration:.2f}s "
+                f"(target {target_duration:.1f}s).",
+                flush=True,
+            )
+            return EXTEND_FROM_SKIP_LONG
+        print(
+            f"Target duration already reached ({total_duration:.2f}s); "
+            "concatenating existing segments.",
+            flush=True,
+        )
 
     try:
-        frame_path = work_dir / "input_last.png"
-        extract_last_frame(input_video, frame_path)
-        if upscale:
-            upscaled_frame_path = work_dir / "input_last_upscaled.png"
-            try:
-                upscale_image(
-                    frame_path,
-                    upscaled_frame_path,
-                    model=upscale_model,
-                    scale=upscale_scale,
-                    realesrgan_bin=realesrgan_bin,
-                    models_dir=models_dir,
+        _write_extend_progress(
+            work_dir,
+            input_video=input_video,
+            segment_commands=segment_commands,
+        )
+
+        if total_duration < target_duration:
+            current_options = base_options
+            if segment_index == 0:
+                frame_source = input_video
+                frame_basename = "input_last"
+                frame_failure = f"Failed to upscale last frame from {input_video.name}"
+            else:
+                frame_source = completed_segments[-1]
+                frame_basename = f"segment_{segment_index:03d}_last"
+                frame_failure = (
+                    f"Failed to upscale last frame for segment {segment_index}"
                 )
-            except (RuntimeError, ValueError) as exc:
-                print_failure(
-                    f"Failed to upscale last frame from {input_video.name}",
-                    details=str(exc),
-                )
+
+            frame_path = _prepare_segment_frame(
+                source_video=frame_source,
+                work_dir=work_dir,
+                frame_basename=frame_basename,
+                upscale=upscale,
+                upscale_model=upscale_model,
+                upscale_scale=upscale_scale,
+                realesrgan_bin=realesrgan_bin,
+                models_dir=models_dir,
+                failure_label=frame_failure,
+            )
+            if frame_path is None:
                 return 1
-            frame_path = upscaled_frame_path
 
-        current_options = base_options
-
-        with prevent_sleep():
-            while total_duration < target_duration:
-                segment_index += 1
-                segment_output = work_dir / f"segment_{segment_index:03d}.mp4"
-                run_options = replace(
-                    current_options,
-                    output=str(segment_output),
-                    image_specs=(str(frame_path),),
-                )
-
-                argv = build_command_argv(run_options)
-                segment_commands.append(argv)
-                label = f"Segment {segment_index}"
-                print(f"[{label}] {format_command(run_options)}", flush=True)
-                exit_code, elapsed = run_with_retries(
-                    argv,
-                    max_retries=max_retries,
-                    label=label,
-                )
-                if exit_code != 0:
-                    attempts = max(1, max_retries)
-                    print_status_band(
-                        f"{label} failed with exit code {exit_code} "
-                        f"after {format_elapsed(elapsed)} ({attempts} attempt(s)).",
-                        success=False,
+            with prevent_sleep():
+                while total_duration < target_duration:
+                    segment_index += 1
+                    segment_output = work_dir / f"segment_{segment_index:03d}.mp4"
+                    run_options = replace(
+                        current_options,
+                        output=str(segment_output),
+                        image_specs=(str(frame_path),),
                     )
-                    return exit_code
 
-                segment_path = Path(run_options.output)
-                if not segment_path.is_file():
-                    print_status_band(
-                        f"{label} failed: expected output file missing ({segment_path}).",
-                        success=False,
+                    argv = build_command_argv(run_options)
+                    segment_commands.append(argv)
+                    label = f"Segment {segment_index}"
+                    print(f"[{label}] {format_command(run_options)}", flush=True)
+                    segment_exit_code, elapsed = run_with_retries(
+                        argv,
+                        max_retries=max_retries,
+                        label=label,
                     )
-                    return 1
-
-                segment_duration = probe_video_duration(segment_path)
-                segments.append(segment_path)
-                generated_segments.append(segment_path)
-                total_duration += segment_duration
-                print_status_band(
-                    f"Segment {segment_index}: {segment_duration:.2f}s "
-                    f"(total {total_duration:.2f}s / {target_duration:.1f}s) "
-                    f"in {format_elapsed(elapsed)}.",
-                    success=True,
-                )
-
-                if total_duration >= target_duration:
-                    break
-
-                frame_path = work_dir / f"segment_{segment_index:03d}_last.png"
-                extract_last_frame(segment_path, frame_path)
-                if upscale:
-                    upscaled_frame_path = (
-                        work_dir / f"segment_{segment_index:03d}_last_upscaled.png"
-                    )
-                    try:
-                        upscale_image(
-                            frame_path,
-                            upscaled_frame_path,
-                            model=upscale_model,
-                            scale=upscale_scale,
-                            realesrgan_bin=realesrgan_bin,
-                            models_dir=models_dir,
+                    if segment_exit_code != 0:
+                        attempts = max(1, max_retries)
+                        print_status_band(
+                            f"{label} failed with exit code {segment_exit_code} "
+                            f"after {format_elapsed(elapsed)} ({attempts} attempt(s)). "
+                            f"Re-run to resume from segment {segment_index}.",
+                            success=False,
                         )
-                    except (RuntimeError, ValueError) as exc:
-                        print_failure(
-                            f"Failed to upscale last frame for segment {segment_index}",
-                            details=str(exc),
+                        return segment_exit_code
+
+                    segment_path = Path(run_options.output)
+                    if not segment_path.is_file():
+                        print_status_band(
+                            f"{label} failed: expected output file missing ({segment_path}). "
+                            f"Re-run to resume from segment {segment_index}.",
+                            success=False,
                         )
                         return 1
-                    frame_path = upscaled_frame_path
-                current_options = run_options
+
+                    segment_duration = probe_video_duration(segment_path)
+                    segments.append(segment_path)
+                    total_duration += segment_duration
+                    _write_extend_progress(
+                        work_dir,
+                        input_video=input_video,
+                        segment_commands=segment_commands,
+                    )
+                    print_status_band(
+                        f"Segment {segment_index}: {segment_duration:.2f}s "
+                        f"(total {total_duration:.2f}s / {target_duration:.1f}s) "
+                        f"in {format_elapsed(elapsed)}.",
+                        success=True,
+                    )
+
+                    if total_duration >= target_duration:
+                        break
+
+                    frame_basename = f"segment_{segment_index:03d}_last"
+                    frame_path = _prepare_segment_frame(
+                        source_video=segment_path,
+                        work_dir=work_dir,
+                        frame_basename=frame_basename,
+                        upscale=upscale,
+                        upscale_model=upscale_model,
+                        upscale_scale=upscale_scale,
+                        realesrgan_bin=realesrgan_bin,
+                        models_dir=models_dir,
+                        failure_label=(
+                            f"Failed to upscale last frame for segment {segment_index}"
+                        ),
+                    )
+                    if frame_path is None:
+                        return 1
+                    current_options = run_options
 
         out_path = Path(
             resolve_extend_from_output_path(str(input_video), final_output)
@@ -247,11 +419,10 @@ def extend_video_from(
             flush=True,
         )
         print(f"Archived original video: {archived}", flush=True)
-        return EXTEND_FROM_OK
+        exit_code = EXTEND_FROM_OK
+        return exit_code
     finally:
-        if not keep_segments:
-            for segment in generated_segments:
-                segment.unlink(missing_ok=True)
+        if exit_code == EXTEND_FROM_OK and not keep_segments:
             shutil.rmtree(work_dir, ignore_errors=True)
 
 
@@ -273,8 +444,9 @@ def run_extend_from_inputs(
 
     Re-running the same folder skips videos that already have an extended output
     under ``extended/`` (``<stem>_extended.mp4`` or ``<stem>_extended_<timestamp>.mp4``),
-    so interrupted runs are resumable. After each successful extend, the original
-    video is moved into ``original/``.
+    so interrupted batch runs are resumable. Interrupted segment generation for a
+    single video resumes from the last completed segment in ``segments/<stem>/``.
+    After each successful extend, the original video is moved into ``original/``.
     """
     videos = discover_extend_from_inputs(input_path)
     extended = 0
@@ -346,4 +518,5 @@ __all__ = [
     "load_generate_options_from_video",
     "parse_target_duration",
     "run_extend_from_inputs",
+    "scan_extend_from_segments",
 ]
