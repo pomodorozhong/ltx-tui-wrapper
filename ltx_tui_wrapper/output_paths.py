@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 
 _TIMESTAMP_SUFFIX = re.compile(r"^\d{8}_\d{6}$")
 _VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v"}
+EXTEND_FROM_EXTENDED_DIR = "extended"
+EXTEND_FROM_ORIGINAL_DIR = "original"
 
 
 def timestamp_suffix(when: datetime | None = None) -> str:
@@ -40,26 +43,41 @@ def _batch_timestamped_variants(base_output: Path) -> list[Path]:
     return variants
 
 
+def extend_from_base_dir(path: Path) -> Path:
+    """Return the directory that holds ``extended/`` and ``original/`` subfolders."""
+    path = path.expanduser()
+    if path.is_dir():
+        return path
+    return path.parent
+
+
 def is_extended_output_video(path: Path) -> bool:
     """Return True when *path* looks like an extend-from output file."""
     return "_extended" in path.stem
 
 
+def extend_from_output_path(input_video: str) -> str:
+    """Return the default extend-from output path under ``extended/``."""
+    path = Path(input_video).expanduser()
+    extended_dir = extend_from_base_dir(path) / EXTEND_FROM_EXTENDED_DIR
+    return str(extended_dir / f"{path.stem}_extended{path.suffix}")
+
+
 def extended_output_exists(input_video: Path) -> Path | None:
     """Return an existing extended output for *input_video*, if any."""
     input_video = input_video.expanduser()
-    parent = input_video.parent
+    extended_dir = extend_from_base_dir(input_video) / EXTEND_FROM_EXTENDED_DIR
     suffix = input_video.suffix
     stem = input_video.stem
     candidates: list[Path] = []
 
-    exact = parent / f"{stem}_extended{suffix}"
+    exact = extended_dir / f"{stem}_extended{suffix}"
     if exact.is_file():
         candidates.append(exact)
 
     prefix = f"{stem}_extended_"
-    if parent.is_dir():
-        for candidate in parent.iterdir():
+    if extended_dir.is_dir():
+        for candidate in extended_dir.iterdir():
             if not candidate.is_file() or candidate.suffix != suffix:
                 continue
             if not candidate.stem.startswith(prefix):
@@ -86,11 +104,28 @@ def resolve_extend_from_output_path(
             return timestamped_output_path(str(path), when=when)
         return str(path)
 
-    path = Path(input_video).expanduser()
-    default = path.with_name(f"{path.stem}_extended{path.suffix}")
+    default = Path(extend_from_output_path(input_video))
     if default.is_file():
         return timestamped_output_path(str(default), when=when)
     return str(default)
+
+
+def archive_extend_from_original(input_video: Path) -> Path:
+    """Move *input_video* into the extend-from ``original/`` subfolder."""
+    input_video = input_video.expanduser().resolve()
+    original_dir = extend_from_base_dir(input_video) / EXTEND_FROM_ORIGINAL_DIR
+    if input_video.parent == original_dir:
+        return input_video
+
+    original_dir.mkdir(parents=True, exist_ok=True)
+    dest = original_dir / input_video.name
+    if dest.resolve() == input_video:
+        return dest
+    if dest.is_file():
+        return dest
+
+    shutil.move(str(input_video), str(dest))
+    return dest
 
 
 def discover_extend_from_inputs(path: Path) -> list[Path]:

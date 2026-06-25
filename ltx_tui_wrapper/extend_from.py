@@ -20,6 +20,7 @@ from ltx_tui_wrapper.extend import (
 )
 from ltx_tui_wrapper.options import GenerateOptions
 from ltx_tui_wrapper.output_paths import (
+    archive_extend_from_original,
     discover_extend_from_inputs,
     extended_output_exists,
     resolve_extend_from_output_path,
@@ -222,6 +223,7 @@ def extend_video_from(
         out_path = Path(
             resolve_extend_from_output_path(str(input_video), final_output)
         )
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         print(
             f"Concatenating {len(segments)} segment(s) -> {out_path}",
             flush=True,
@@ -236,6 +238,7 @@ def extend_video_from(
                 GENERATE_COMMANDS_METADATA_KEY: format_generate_commands(segment_commands),
             },
         )
+        archived = archive_extend_from_original(input_video)
         final_duration = probe_video_duration(out_path)
         total_elapsed = time.perf_counter() - extend_started
         print(
@@ -243,6 +246,7 @@ def extend_video_from(
             f"in {format_elapsed(total_elapsed)}.",
             flush=True,
         )
+        print(f"Archived original video: {archived}", flush=True)
         return EXTEND_FROM_OK
     finally:
         if not keep_segments:
@@ -268,8 +272,9 @@ def run_extend_from_inputs(
     """Extend every candidate video under *input_path* (file or directory).
 
     Re-running the same folder skips videos that already have an extended output
-    (``<stem>_extended.mp4`` or ``<stem>_extended_<timestamp>.mp4``), so interrupted
-    runs are resumable.
+    under ``extended/`` (``<stem>_extended.mp4`` or ``<stem>_extended_<timestamp>.mp4``),
+    so interrupted runs are resumable. After each successful extend, the original
+    video is moved into ``original/``.
     """
     videos = discover_extend_from_inputs(input_path)
     extended = 0

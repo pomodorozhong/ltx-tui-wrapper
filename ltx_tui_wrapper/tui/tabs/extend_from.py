@@ -9,7 +9,8 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Button, Checkbox, Collapsible, Label, Select, Static
 
-from ltx_tui_wrapper.extend import extended_output_path, parse_target_duration
+from ltx_tui_wrapper.extend import parse_target_duration
+from ltx_tui_wrapper.output_paths import extend_from_output_path
 from ltx_tui_wrapper.last_extend_from_run import (
     load_last_extend_from_run,
     save_last_extend_from_run,
@@ -52,7 +53,7 @@ class ExtendFromTabMixin(TabMixinBase):
             yield CopyInput(value="1", id="extend-from-retries")
             yield Label("Final output path (optional, single input only)", classes="field-label")
             yield CopyInput(
-                placeholder="default: <input-stem>_extended.mp4",
+                placeholder="default: extended/<input-stem>_extended.mp4",
                 id="extend-from-output",
             )
             yield Checkbox("Keep segment files", id="extend-from-keep-segments")
@@ -173,7 +174,9 @@ class ExtendFromTabMixin(TabMixinBase):
 
         input_path = str(candidate)
         self.query_one("#extend-from-input", CopyInput).value = input_path
-        self.query_one("#extend-from-output", CopyInput).value = extended_output_path(input_path)
+        self.query_one("#extend-from-output", CopyInput).value = extend_from_output_path(
+            input_path
+        )
         self._refresh_extend_from_preview()
         self._set_status("Applied last run output as extend-from input.")
 
