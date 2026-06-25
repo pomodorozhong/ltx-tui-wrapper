@@ -313,7 +313,7 @@ class LtxTuiApp(
         if spec.apply_last_needs_last_run:
             apply_last(last_run)
             return
-        apply_last(last_run)
+        apply_last()
 
     @on(Button.Pressed, "#quit")
     def quit_pressed(self) -> None:
