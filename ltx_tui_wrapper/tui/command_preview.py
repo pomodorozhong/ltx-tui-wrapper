@@ -37,7 +37,13 @@ def extend_first_segment_command_preview() -> str:
     )
 
 
-def extend_from_command_preview(input_path: str) -> str:
+def extend_from_command_preview(
+    input_path: str,
+    *,
+    frames: int | None = None,
+    regenerate_base: bool = False,
+    random_seed: bool = False,
+) -> str:
     """Return the first new-segment command for extend-from runs."""
     from pathlib import Path
 
@@ -79,15 +85,44 @@ def extend_from_command_preview(input_path: str) -> str:
     except ValueError as exc:
         return str(exc)
 
-    preview_options = replace(
-        base,
-        output="<segment>.mp4",
-        image_specs=("<input-last-frame.png>",),
-    )
-    command = format_command(preview_options)
-    return (
-        f"{command}\n\n"
-        "(The input video is kept as the first segment; new segments chain from "
-        "its last frame until the target duration is exceeded.)"
-        f"{resume_note}"
-    )
+    if frames is not None:
+        base = replace(base, frames=frames)
+
+    override_notes: list[str] = []
+    if frames is not None:
+        override_notes.append(f"frame count overridden to {frames}")
+    if random_seed:
+        override_notes.append("random seed for all new segments")
+    if regenerate_base:
+        override_notes.append("base segment regenerated from input last frame")
+
+    if regenerate_base and not completed:
+        preview_options = replace(
+            base,
+            output="base_regenerated.mp4",
+            image_specs=("<input-last-frame.png>",),
+        )
+        command = format_command(preview_options)
+        chain_note = (
+            "A new base segment is generated from the input's last frame first; "
+            "later segments chain from there until the target duration is exceeded."
+        )
+    else:
+        preview_options = replace(
+            base,
+            output="<segment>.mp4",
+            image_specs=("<input-last-frame.png>",),
+        )
+        command = format_command(preview_options)
+        chain_note = (
+            "The input video is kept as the first segment; new segments chain from "
+            "its last frame until the target duration is exceeded."
+        )
+
+    override_text = ""
+    if override_notes:
+        override_text = f"\n\nOverrides: {', '.join(override_notes)}."
+    if random_seed:
+        override_text += " Preview shows a placeholder seed; a new value is picked at run time."
+
+    return f"{command}\n\n({chain_note}){override_text}{resume_note}"

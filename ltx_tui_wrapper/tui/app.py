@@ -96,6 +96,9 @@ class LtxTuiApp(
         extend_from_upscale_scale: int | None = None,
         extend_from_realesrgan_bin: str | None = None,
         extend_from_models_dir: str | None = None,
+        extend_from_frames: int | None = None,
+        extend_from_regenerate_base: bool | None = None,
+        extend_from_random_seed: bool | None = None,
         upscale_input: str | None = None,
         upscale_output: str | None = None,
         upscale_model: str | None = None,
@@ -144,6 +147,9 @@ class LtxTuiApp(
                     upscale_scale=extend_from_upscale_scale,
                     realesrgan_bin=extend_from_realesrgan_bin,
                     models_dir=extend_from_models_dir,
+                    frames=extend_from_frames,
+                    regenerate_base=extend_from_regenerate_base,
+                    random_seed=extend_from_random_seed,
                 ),
                 upscale=UpscalePrefill(
                     input=upscale_input,
@@ -185,6 +191,9 @@ class LtxTuiApp(
         self._extend_from_upscale_scale = prefill.extend_from.upscale_scale
         self._extend_from_realesrgan_bin = prefill.extend_from.realesrgan_bin
         self._extend_from_models_dir = prefill.extend_from.models_dir
+        self._extend_from_frames = prefill.extend_from.frames
+        self._extend_from_regenerate_base = prefill.extend_from.regenerate_base
+        self._extend_from_random_seed = prefill.extend_from.random_seed
         self._upscale_input = prefill.upscale.input
         self._upscale_output = prefill.upscale.output
         self._upscale_model = prefill.upscale.model
@@ -364,6 +373,9 @@ def run_ltx_tui(
     extend_from_upscale_scale: int | None = None,
     extend_from_realesrgan_bin: str | None = None,
     extend_from_models_dir: str | None = None,
+    extend_from_frames: int | None = None,
+    extend_from_regenerate_base: bool | None = None,
+    extend_from_random_seed: bool | None = None,
     upscale_input: str | None = None,
     upscale_output: str | None = None,
     upscale_model: str | None = None,
@@ -408,6 +420,9 @@ def run_ltx_tui(
         extend_from_upscale_scale=extend_from_upscale_scale,
         extend_from_realesrgan_bin=extend_from_realesrgan_bin,
         extend_from_models_dir=extend_from_models_dir,
+        extend_from_frames=extend_from_frames,
+        extend_from_regenerate_base=extend_from_regenerate_base,
+        extend_from_random_seed=extend_from_random_seed,
         upscale_input=upscale_input,
         upscale_output=upscale_output,
         upscale_model=upscale_model,

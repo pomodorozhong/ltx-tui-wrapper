@@ -77,6 +77,23 @@ def main() -> None:
         "--models-dir",
         help="Pre-fill path to realesrgan-ncnn-vulkan models directory",
     )
+    parser.add_argument(
+        "-f",
+        "--frames",
+        type=int,
+        metavar="N",
+        help="Pre-fill frame count override for new segments",
+    )
+    parser.add_argument(
+        "--regenerate-base",
+        action="store_true",
+        help="Pre-fill regenerate base segment from input last frame",
+    )
+    parser.add_argument(
+        "--random-seed",
+        action="store_true",
+        help="Pre-fill use one random seed for all new segments",
+    )
     args = parser.parse_args()
     prefill = AppPrefill(
         initial_tab="extend_from",
@@ -92,6 +109,9 @@ def main() -> None:
             upscale_scale=args.upscale_scale,
             realesrgan_bin=args.realesrgan_bin,
             models_dir=args.models_dir,
+            frames=args.frames,
+            regenerate_base=args.regenerate_base,
+            random_seed=args.random_seed,
         ),
     )
     raise SystemExit(run_ltx_tui(prefill=prefill))

@@ -51,6 +51,9 @@ class ExtendFromPrefill:
     upscale_scale: int | None = None
     realesrgan_bin: str | None = None
     models_dir: str | None = None
+    frames: int | None = None
+    regenerate_base: bool | None = None
+    random_seed: bool | None = None
 
 
 @dataclass(frozen=True)

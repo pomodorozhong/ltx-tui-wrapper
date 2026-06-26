@@ -59,6 +59,36 @@ class ExtendFromTabMixin(TabMixinBase):
             )
             yield Checkbox("Keep segment files", id="extend-from-keep-segments")
             yield Checkbox("Continue on error", id="extend-from-continue-on-error")
+            with Collapsible(title="Override embedded generate settings", collapsed=True):
+                yield Label("Frame count (optional)", classes="field-label")
+                yield CopyInput(
+                    placeholder="leave empty to use embedded value",
+                    id="extend-from-frames",
+                )
+                yield Static(
+                    "When set, new segments use this frame count instead of the "
+                    "value stored in the input video metadata.",
+                    classes="field-hint",
+                )
+                yield Checkbox(
+                    "Regenerate base segment from input last frame",
+                    id="extend-from-regenerate-base",
+                )
+                yield Static(
+                    "Re-run the first segment from the input's last frame so a frame "
+                    "count override applies before chaining further segments. The "
+                    "original input video is replaced in the final output.",
+                    classes="field-hint",
+                )
+                yield Checkbox(
+                    "Use random seed for all new segments",
+                    id="extend-from-random-seed",
+                )
+                yield Static(
+                    "Pick one random seed at the start and reuse it for every new "
+                    "segment in this run.",
+                    classes="field-hint",
+                )
             with Collapsible(title="Upscale last frame between segments", collapsed=True):
                 yield Checkbox(
                     "AI-upscale last frame before next segment",
@@ -101,6 +131,18 @@ class ExtendFromTabMixin(TabMixinBase):
             self.query_one("#extend-from-continue-on-error", Checkbox).value = (
                 self._extend_from_continue_on_error
             )
+        if self._extend_from_frames is not None:
+            self.query_one("#extend-from-frames", CopyInput).value = str(
+                self._extend_from_frames
+            )
+        if self._extend_from_regenerate_base is not None:
+            self.query_one("#extend-from-regenerate-base", Checkbox).value = (
+                self._extend_from_regenerate_base
+            )
+        if self._extend_from_random_seed is not None:
+            self.query_one("#extend-from-random-seed", Checkbox).value = (
+                self._extend_from_random_seed
+            )
         if self._extend_from_upscale is not None:
             self.query_one("#extend-from-upscale", Checkbox).value = self._extend_from_upscale
         if self._extend_from_upscale_model is not None:
@@ -121,6 +163,22 @@ class ExtendFromTabMixin(TabMixinBase):
             )
         self._refresh_extend_from_preview()
 
+    def _extend_from_override_values(self) -> tuple[int | None, bool, bool]:
+        frames_text = self.query_one("#extend-from-frames", CopyInput).value.strip()
+        frames: int | None = None
+        if frames_text:
+            try:
+                frames = int(frames_text)
+            except ValueError:
+                frames = -1
+            if frames < 1:
+                frames = -1
+        regenerate_base = self.query_one(
+            "#extend-from-regenerate-base", Checkbox
+        ).value
+        random_seed = self.query_one("#extend-from-random-seed", Checkbox).value
+        return frames, regenerate_base, random_seed
+
     def _refresh_extend_from_preview(self) -> None:
         input_text = self.query_one("#extend-from-input", CopyInput).value.strip()
         if not input_text:
@@ -128,8 +186,19 @@ class ExtendFromTabMixin(TabMixinBase):
                 "Set an input video or folder to preview the first new segment command."
             )
             return
+        frames, regenerate_base, random_seed = self._extend_from_override_values()
+        if frames == -1:
+            self.query_one("#extend-from-command-preview", Static).update(
+                "Frame count override must be a positive integer."
+            )
+            return
         self.query_one("#extend-from-command-preview", Static).update(
-            extend_from_command_preview(input_text)
+            extend_from_command_preview(
+                input_text,
+                frames=frames,
+                regenerate_base=regenerate_base,
+                random_seed=random_seed,
+            )
         )
 
     def apply_last_extend_from(self, last_run: GenerateOptions | None = None) -> None:
@@ -142,6 +211,15 @@ class ExtendFromTabMixin(TabMixinBase):
             self.query_one("#extend-from-keep-segments", Checkbox).value = settings.keep_segments
             self.query_one("#extend-from-continue-on-error", Checkbox).value = (
                 settings.continue_on_error
+            )
+            self.query_one("#extend-from-frames", CopyInput).value = (
+                "" if settings.frames is None else str(settings.frames)
+            )
+            self.query_one("#extend-from-regenerate-base", Checkbox).value = (
+                settings.regenerate_base
+            )
+            self.query_one("#extend-from-random-seed", Checkbox).value = (
+                settings.random_seed
             )
             self.query_one("#extend-from-upscale", Checkbox).value = settings.upscale
             self.query_one("#extend-from-upscale-model", Select).value = settings.upscale_model
@@ -206,7 +284,13 @@ class ExtendFromTabMixin(TabMixinBase):
         )
 
     @on(CopyInput.Changed, "#extend-from-input")
+    @on(CopyInput.Changed, "#extend-from-frames")
     def extend_from_input_changed(self) -> None:
+        self._refresh_extend_from_preview()
+
+    @on(Checkbox.Changed, "#extend-from-regenerate-base")
+    @on(Checkbox.Changed, "#extend-from-random-seed")
+    def extend_from_override_changed(self) -> None:
         self._refresh_extend_from_preview()
 
     def _start_extend_from_run(self) -> None:
@@ -248,6 +332,27 @@ class ExtendFromTabMixin(TabMixinBase):
         if retries is None:
             return
 
+        frames_text = self.query_one("#extend-from-frames", CopyInput).value.strip()
+        frames: int | None = None
+        if frames_text:
+            try:
+                frames = int(frames_text)
+            except ValueError:
+                self._set_validation_highlights(["#extend-from-frames"])
+                self.query_one("#extend-from-frames").focus()
+                self._set_status("Frame count override must be an integer.")
+                return
+            if frames < 1:
+                self._set_validation_highlights(["#extend-from-frames"])
+                self.query_one("#extend-from-frames").focus()
+                self._set_status("Frame count override must be at least 1.")
+                return
+
+        regenerate_base = self.query_one(
+            "#extend-from-regenerate-base", Checkbox
+        ).value
+        random_seed = self.query_one("#extend-from-random-seed", Checkbox).value
+
         upscale_scale_text = self.query_one("#extend-from-upscale-scale", CopyInput).value
         try:
             upscale_scale = self._parse_optional_scale(
@@ -277,6 +382,9 @@ class ExtendFromTabMixin(TabMixinBase):
             upscale_scale=upscale_scale,
             realesrgan_bin=realesrgan_bin or None,
             models_dir=models_dir or None,
+            frames=frames,
+            regenerate_base=regenerate_base,
+            random_seed=random_seed,
         )
 
         self._pending_run = ExtendFromRun(
@@ -291,5 +399,8 @@ class ExtendFromTabMixin(TabMixinBase):
             upscale_scale=upscale_scale,
             realesrgan_bin=realesrgan_bin or None,
             models_dir=models_dir or None,
+            frames=frames,
+            regenerate_base=regenerate_base,
+            random_seed=random_seed,
         )
         self.exit()

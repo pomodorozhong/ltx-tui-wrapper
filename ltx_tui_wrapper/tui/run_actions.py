@@ -67,6 +67,9 @@ class ExtendFromRun:
     upscale_scale: int | None
     realesrgan_bin: str | None
     models_dir: str | None
+    frames: int | None
+    regenerate_base: bool
+    random_seed: bool
 
 
 RunAction = GenerateRun | BatchRun | ExtendRun | UpscaleRun | ExtendFromRun
@@ -144,6 +147,9 @@ def _execute_extend_from(action: ExtendFromRun) -> int:
         upscale_scale=action.upscale_scale,
         realesrgan_bin=action.realesrgan_bin,
         models_dir=action.models_dir,
+        frames=action.frames,
+        regenerate_base=action.regenerate_base,
+        random_seed=action.random_seed,
     )
 
 

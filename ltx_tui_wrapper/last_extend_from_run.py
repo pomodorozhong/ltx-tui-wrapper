@@ -22,6 +22,9 @@ class ExtendFromRunSettings:
     upscale_scale: int | None
     realesrgan_bin: str | None
     models_dir: str | None
+    frames: int | None
+    regenerate_base: bool
+    random_seed: bool
 
 
 def save_last_extend_from_run(
@@ -37,6 +40,9 @@ def save_last_extend_from_run(
     upscale_scale: int | None,
     realesrgan_bin: str | None,
     models_dir: str | None,
+    frames: int | None,
+    regenerate_base: bool,
+    random_seed: bool,
 ) -> None:
     """Write extend-from tab settings to the user's config directory."""
     LAST_EXTEND_FROM_RUN_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -52,6 +58,9 @@ def save_last_extend_from_run(
         "upscale_scale": upscale_scale,
         "realesrgan_bin": realesrgan_bin,
         "models_dir": models_dir,
+        "frames": frames,
+        "regenerate_base": regenerate_base,
+        "random_seed": random_seed,
     }
     LAST_EXTEND_FROM_RUN_PATH.write_text(json.dumps(data, indent=2) + "\n")
 
@@ -74,6 +83,9 @@ def load_last_extend_from_run() -> ExtendFromRunSettings | None:
             upscale_scale=_optional_int(data.get("upscale_scale")),
             realesrgan_bin=_optional_str(data.get("realesrgan_bin")),
             models_dir=_optional_str(data.get("models_dir")),
+            frames=_optional_int(data.get("frames")),
+            regenerate_base=bool(data.get("regenerate_base", False)),
+            random_seed=bool(data.get("random_seed", False)),
         )
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         return None
