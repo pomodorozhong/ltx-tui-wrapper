@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-TabId = Literal["generate", "batch", "extend", "extend_from", "upscale"]
+TabId = Literal["generate", "batch", "extend", "extend_from", "upscale", "inspect"]
 
 
 @dataclass(frozen=True)
@@ -21,6 +21,7 @@ class TabSpec:
     apply_last_method: str | None = None
     apply_last_needs_last_run: bool = False
     activate_method: str | None = None
+    run_enabled: bool = True
 
 
 TAB_SPECS: tuple[TabSpec, ...] = (
@@ -74,6 +75,18 @@ TAB_SPECS: tuple[TabSpec, ...] = (
         start_run_method="_start_upscale_run",
         apply_last_method="apply_last_upscale",
         apply_last_needs_last_run=True,
+    ),
+    TabSpec(
+        id="inspect",
+        title="Inspect",
+        hotkey="ctrl+6",
+        compose_method="_compose_inspect_tab",
+        mount_method="_mount_inspect_tab",
+        start_run_method="_start_inspect_run",
+        apply_last_method="apply_last_inspect",
+        apply_last_needs_last_run=True,
+        activate_method="_refresh_inspect_preview",
+        run_enabled=False,
     ),
 )
 

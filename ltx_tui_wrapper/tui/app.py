@@ -25,6 +25,7 @@ from ltx_tui_wrapper.tui.prefill import (
     ExtendPrefill,
     ExtendFromPrefill,
     GeneratePrefill,
+    InspectPrefill,
     UpscalePrefill,
 )
 from ltx_tui_wrapper.tui.run_actions import RunAction, execute_run_action
@@ -35,6 +36,7 @@ from ltx_tui_wrapper.tui.tabs import (
     ExtendTabMixin,
     ExtendFromTabMixin,
     GenerateTabMixin,
+    InspectTabMixin,
     TabHelpersMixin,
     UpscaleTabMixin,
 )
@@ -49,6 +51,7 @@ class LtxTuiApp(
     ExtendTabMixin,
     ExtendFromTabMixin,
     UpscaleTabMixin,
+    InspectTabMixin,
     App[None],
 ):
     """Tabbed builder for generate, batch, extend, and upscale commands."""
@@ -106,6 +109,7 @@ class LtxTuiApp(
         upscale_realesrgan_bin: str | None = None,
         upscale_models_dir: str | None = None,
         upscale_keep_frames: bool | None = None,
+        inspect_input: str | None = None,
     ) -> None:
         super().__init__()
         if prefill is None:
@@ -160,6 +164,7 @@ class LtxTuiApp(
                     models_dir=upscale_models_dir,
                     keep_frames=upscale_keep_frames,
                 ),
+                inspect=InspectPrefill(input=inspect_input),
             )
         self._initial_tab = prefill.initial_tab
         self._initial_prompt = prefill.generate.prompt
@@ -201,6 +206,7 @@ class LtxTuiApp(
         self._upscale_realesrgan_bin = prefill.upscale.realesrgan_bin
         self._upscale_models_dir = prefill.upscale.models_dir
         self._upscale_keep_frames = prefill.upscale.keep_frames
+        self._inspect_input = prefill.inspect.input
         self._form = GenerateForm(self)
         self._validator = GenerateFormValidator(self._form)
         self._last_run_options: GenerateOptions | None = None
@@ -232,6 +238,22 @@ class LtxTuiApp(
     def on_mount(self) -> None:
         for spec in TAB_SPECS:
             getattr(self, spec.mount_method)()
+        self._update_tab_actions()
+
+    def _update_tab_actions(self) -> None:
+        spec = TAB_SPEC_BY_ID[self._active_tab()]
+        run_button = self.query_one("#run", Button)
+        run_hint = self.query_one("#run-hint", Static)
+        if spec.run_enabled:
+            run_button.disabled = False
+            run_hint.update(
+                "Run closes this TUI and executes the command in your terminal."
+            )
+        else:
+            run_button.disabled = True
+            run_hint.update(
+                "Select a video to view its embedded ltx-tui command metadata."
+            )
 
     def _active_tab(self) -> TabId:
         active = self.query_one("#tabs", TabbedContent).active
@@ -249,6 +271,7 @@ class LtxTuiApp(
     @on(TabbedContent.TabActivated, "#tabs")
     def tab_activated(self) -> None:
         self._set_status("")
+        self._update_tab_actions()
         spec = TAB_SPEC_BY_ID[self._active_tab()]
         if spec.activate_method:
             getattr(self, spec.activate_method)()
@@ -329,11 +352,16 @@ class LtxTuiApp(
         self.exit()
 
     def action_run(self) -> None:
+        spec = TAB_SPEC_BY_ID[self._active_tab()]
+        if not spec.run_enabled:
+            return
         self.query_one("#run", Button).press()
 
     @on(Button.Pressed, "#run")
     def run_pressed(self) -> None:
         spec = TAB_SPEC_BY_ID[self._active_tab()]
+        if not spec.run_enabled:
+            return
         getattr(self, spec.start_run_method)()
 
 
@@ -383,6 +411,7 @@ def run_ltx_tui(
     upscale_realesrgan_bin: str | None = None,
     upscale_models_dir: str | None = None,
     upscale_keep_frames: bool | None = None,
+    inspect_input: str | None = None,
 ) -> int:
     """Launch the unified ltx-tui builder.
 
@@ -430,6 +459,7 @@ def run_ltx_tui(
         upscale_realesrgan_bin=upscale_realesrgan_bin,
         upscale_models_dir=upscale_models_dir,
         upscale_keep_frames=upscale_keep_frames,
+        inspect_input=inspect_input,
     )
     app.run()
     if app.pending_run is None:

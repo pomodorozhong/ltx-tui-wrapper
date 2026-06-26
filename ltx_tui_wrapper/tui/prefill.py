@@ -68,6 +68,11 @@ class UpscalePrefill:
 
 
 @dataclass(frozen=True)
+class InspectPrefill:
+    input: str | None = None
+
+
+@dataclass(frozen=True)
 class AppPrefill:
     initial_tab: TabId = "generate"
     generate: GeneratePrefill = field(default_factory=GeneratePrefill)
@@ -75,3 +80,4 @@ class AppPrefill:
     extend: ExtendPrefill = field(default_factory=ExtendPrefill)
     extend_from: ExtendFromPrefill = field(default_factory=ExtendFromPrefill)
     upscale: UpscalePrefill = field(default_factory=UpscalePrefill)
+    inspect: InspectPrefill = field(default_factory=InspectPrefill)

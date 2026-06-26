@@ -137,3 +137,84 @@ def read_command_metadata(path: Path) -> str | None:
     if not value:
         return None
     return value
+
+
+def format_argv_readable(argv: list[str]) -> str:
+    """Format an argv as one ``argument: value`` pair per line."""
+    if not argv:
+        return ""
+
+    lines: list[str] = []
+    index = 0
+
+    lines.append(f"program: {argv[index]}")
+    index += 1
+
+    if index < len(argv) and not argv[index].startswith("-"):
+        lines.append(f"command: {argv[index]}")
+        index += 1
+
+    while index < len(argv):
+        argument = argv[index]
+        if argument.startswith("-"):
+            index += 1
+            values: list[str] = []
+            while index < len(argv) and not argv[index].startswith("-"):
+                values.append(argv[index])
+                index += 1
+            if values:
+                lines.append(f"{argument}: {' '.join(values)}")
+            else:
+                lines.append(argument)
+            continue
+
+        lines.append(f"arg: {argument}")
+        index += 1
+
+    return "\n".join(lines)
+
+
+def format_command_string_readable(command: str) -> str:
+    """Format a shell-quoted command string for display."""
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        return command
+    if not argv:
+        return command
+    return format_argv_readable(argv)
+
+
+def format_stored_commands(path: Path) -> str:
+    """Return a human-readable summary of ltx-tui commands stored in *path* metadata."""
+    if not path.is_file():
+        return f"File not found: {path}"
+
+    tags = read_metadata(path)
+    if not tags:
+        return (
+            "No metadata tags found in this file "
+            "(or ffprobe is unavailable)."
+        )
+
+    command = tags.get(METADATA_KEY)
+    if not command:
+        return "No ltx-tui command metadata found in this file."
+
+    lines = [format_command_string_readable(command)]
+    segments = tags.get(GENERATE_COMMANDS_METADATA_KEY)
+    if segments:
+        lines.append("")
+        lines.append("Segment generate commands:")
+        for index, segment_command in enumerate(segments.splitlines(), start=1):
+            segment_command = segment_command.strip()
+            if not segment_command:
+                continue
+            lines.extend(
+                (
+                    "",
+                    f"--- Segment {index} ---",
+                    format_command_string_readable(segment_command),
+                )
+            )
+    return "\n".join(lines)
