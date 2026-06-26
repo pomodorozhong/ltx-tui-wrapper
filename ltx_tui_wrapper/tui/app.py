@@ -7,6 +7,7 @@ from pathlib import Path
 
 from textual import on, work
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.widgets import Button, Footer, Header, Static, TabbedContent, TabPane
 
@@ -62,6 +63,12 @@ class LtxTuiApp(
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("ctrl+r", "run", "Run"),
+        Binding(
+            "ctrl+shift+c,super+shift+c",
+            "copy_inspect_metadata",
+            "Copy metadata",
+            show=False,
+        ),
         *[(spec.hotkey, f"show_tab('{spec.id}')", spec.title) for spec in TAB_SPECS],
     ]
 
@@ -244,6 +251,12 @@ class LtxTuiApp(
         spec = TAB_SPEC_BY_ID[self._active_tab()]
         run_button = self.query_one("#run", Button)
         run_hint = self.query_one("#run-hint", Static)
+        self.bind(
+            "ctrl+shift+c,super+shift+c",
+            "copy_inspect_metadata",
+            description="Copy metadata",
+            show=spec.id == "inspect",
+        )
         if spec.run_enabled:
             run_button.disabled = False
             run_hint.update(

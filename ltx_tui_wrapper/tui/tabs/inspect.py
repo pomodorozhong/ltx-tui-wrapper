@@ -13,7 +13,11 @@ from ltx_tui_wrapper.options import GenerateOptions
 from ltx_tui_wrapper.output_paths import latest_output_path
 from ltx_tui_wrapper.tui.tabs.shared import TabMixinBase
 from ltx_tui_wrapper.tui.widgets import CopyInput
-from ltx_tui_wrapper.video_metadata import format_stored_commands
+from ltx_tui_wrapper.video_metadata import (
+    METADATA_KEY,
+    format_stored_commands,
+    read_metadata,
+)
 
 
 class InspectTabMixin(TabMixinBase):
@@ -32,7 +36,9 @@ class InspectTabMixin(TabMixinBase):
                     id="inspect-input",
                 )
                 yield Button("Browse…", id="browse-inspect-input")
-            yield Label("Saved command", classes="field-label")
+            with Horizontal(classes="field-row"):
+                yield Label("Saved command", classes="field-label")
+                yield Button("Copy", id="copy-inspect-metadata", disabled=True)
             yield Static(
                 "Select a video to view its embedded command metadata.",
                 id="inspect-command-preview",
@@ -64,15 +70,46 @@ class InspectTabMixin(TabMixinBase):
     def inspect_input_changed(self) -> None:
         self._refresh_inspect_preview()
 
+    @on(Button.Pressed, "#copy-inspect-metadata")
+    def copy_inspect_metadata_pressed(self) -> None:
+        self._copy_inspect_metadata()
+
+    def action_copy_inspect_metadata(self) -> None:
+        if self._active_tab() != "inspect":
+            return
+        self._copy_inspect_metadata()
+
+    def _inspect_metadata_text(self) -> str | None:
+        input_text = self.query_one("#inspect-input", CopyInput).value.strip()
+        if not input_text:
+            return None
+        path = Path(input_text).expanduser()
+        if not path.is_file():
+            return None
+        if not read_metadata(path).get(METADATA_KEY):
+            return None
+        return format_stored_commands(path)
+
+    def _copy_inspect_metadata(self) -> None:
+        text = self._inspect_metadata_text()
+        if not text:
+            self._set_status("No metadata to copy.")
+            return
+        self.copy_to_clipboard(text)
+        self._set_status("Copied metadata to clipboard.")
+
     def _refresh_inspect_preview(self) -> None:
         preview = self.query_one("#inspect-command-preview", Static)
+        copy_button = self.query_one("#copy-inspect-metadata", Button)
         input_text = self.query_one("#inspect-input", CopyInput).value.strip()
         if not input_text:
             preview.update(
                 "Select a video to view its embedded command metadata."
             )
+            copy_button.disabled = True
             return
         preview.update(format_stored_commands(Path(input_text).expanduser()))
+        copy_button.disabled = self._inspect_metadata_text() is None
 
     def _start_inspect_run(self) -> None:
         self._refresh_inspect_preview()
