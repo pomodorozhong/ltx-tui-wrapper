@@ -29,9 +29,8 @@ from ltx_tui_wrapper.upscale import upscale_image
 from ltx_tui_wrapper.video_metadata import (
     GENERATE_COMMANDS_METADATA_KEY,
     METADATA_KEY,
-    current_invocation,
+    build_extend_invocation_argv,
     format_generate_commands,
-    invocation_with_output,
     write_metadata,
 )
 
@@ -341,7 +340,18 @@ def extend_video(
             out_path,
             {
                 METADATA_KEY: shlex.join(
-                    invocation_with_output(current_invocation(), out_path)
+                    build_extend_invocation_argv(
+                        target_duration=target_duration,
+                        output_path=out_path,
+                        max_retries=max_retries,
+                        timestamp=timestamp,
+                        keep_segments=keep_segments,
+                        upscale=upscale,
+                        upscale_model=upscale_model,
+                        upscale_scale=upscale_scale,
+                        realesrgan_bin=realesrgan_bin,
+                        models_dir=models_dir,
+                    )
                 ),
                 GENERATE_COMMANDS_METADATA_KEY: format_generate_commands(
                     segment_commands

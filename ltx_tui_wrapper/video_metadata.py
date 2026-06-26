@@ -11,6 +11,8 @@ from pathlib import Path
 
 METADATA_KEY = "ltx_tui_command"
 GENERATE_COMMANDS_METADATA_KEY = "ltx_tui_generate_commands"
+EXTEND_PROGRAMS = frozenset({"ltx-tui-extend", "ltx-tui-extend-from"})
+DEFAULT_UPSCALE_MODEL = "realesrgan-x4plus"
 
 
 def current_invocation() -> list[str]:
@@ -139,6 +141,162 @@ def read_command_metadata(path: Path) -> str | None:
     return value
 
 
+def format_duration_for_invocation(seconds: float) -> str:
+    """Format a duration in seconds for ``-l`` metadata."""
+    if seconds == int(seconds):
+        return str(int(seconds))
+    return f"{seconds:g}s"
+
+
+def _argv_flag_value(argv: list[str], *flags: str) -> str | None:
+    for flag in flags:
+        if flag in argv:
+            index = argv.index(flag)
+            if index + 1 < len(argv):
+                return argv[index + 1]
+    return None
+
+
+def upscale_enabled_in_argv(argv: list[str]) -> bool:
+    """Return whether *argv* enables AI upscale between extend segments."""
+    if "--no-upscale" in argv:
+        return False
+    return "--upscale" in argv
+
+
+def parse_upscale_from_argv(argv: list[str]) -> dict[str, object]:
+    """Return upscale settings encoded in an extend / extend-from argv."""
+    return {
+        "enabled": upscale_enabled_in_argv(argv),
+        "model": _argv_flag_value(argv, "--upscale-model") or DEFAULT_UPSCALE_MODEL,
+        "scale": _optional_int(_argv_flag_value(argv, "--upscale-scale")),
+    }
+
+
+def _optional_int(value: str | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def format_upscale_summary(argv: list[str]) -> str | None:
+    """Return a readable AI-upscale summary for extend / extend-from commands."""
+    if not argv or argv[0] not in EXTEND_PROGRAMS:
+        return None
+
+    settings = parse_upscale_from_argv(argv)
+    if not settings["enabled"]:
+        return "AI upscale between segments: no"
+
+    lines = ["AI upscale between segments: yes", f"model: {settings['model']}"]
+    if settings["scale"] is not None:
+        lines.append(f"scale: {settings['scale']}")
+    return "\n".join(lines)
+
+
+def _append_upscale_invocation_args(
+    argv: list[str],
+    *,
+    upscale: bool,
+    upscale_model: str,
+    upscale_scale: int | None,
+    realesrgan_bin: str | None,
+    models_dir: str | None,
+) -> None:
+    if upscale:
+        argv.append("--upscale")
+    if upscale_model != DEFAULT_UPSCALE_MODEL:
+        argv.extend(["--upscale-model", upscale_model])
+    if upscale_scale is not None:
+        argv.extend(["--upscale-scale", str(upscale_scale)])
+    if realesrgan_bin:
+        argv.extend(["--realesrgan-bin", realesrgan_bin])
+    if models_dir:
+        argv.extend(["--models-dir", models_dir])
+
+
+def build_extend_invocation_argv(
+    *,
+    target_duration: float,
+    output_path: Path,
+    max_retries: int = 1,
+    timestamp: bool = True,
+    keep_segments: bool = False,
+    upscale: bool = False,
+    upscale_model: str = DEFAULT_UPSCALE_MODEL,
+    upscale_scale: int | None = None,
+    realesrgan_bin: str | None = None,
+    models_dir: str | None = None,
+) -> list[str]:
+    """Build the ``ltx-tui-extend`` argv stored in extended video metadata."""
+    argv = ["ltx-tui-extend", "-l", format_duration_for_invocation(target_duration)]
+    if max_retries != 1:
+        argv.extend(["-r", str(max_retries)])
+    if not timestamp:
+        argv.append("--no-timestamp")
+    if keep_segments:
+        argv.append("--keep-segments")
+    _append_upscale_invocation_args(
+        argv,
+        upscale=upscale,
+        upscale_model=upscale_model,
+        upscale_scale=upscale_scale,
+        realesrgan_bin=realesrgan_bin,
+        models_dir=models_dir,
+    )
+    argv.extend(["-o", str(output_path)])
+    return argv
+
+
+def build_extend_from_invocation_argv(
+    *,
+    input_video: Path,
+    target_duration: float,
+    output_path: Path,
+    max_retries: int = 1,
+    keep_segments: bool = False,
+    upscale: bool = False,
+    upscale_model: str = DEFAULT_UPSCALE_MODEL,
+    upscale_scale: int | None = None,
+    realesrgan_bin: str | None = None,
+    models_dir: str | None = None,
+    frames: int | None = None,
+    regenerate_base: bool = False,
+    random_seed: bool = False,
+) -> list[str]:
+    """Build the ``ltx-tui-extend-from`` argv stored in extended video metadata."""
+    argv = [
+        "ltx-tui-extend-from",
+        "-i",
+        str(input_video),
+        "-l",
+        format_duration_for_invocation(target_duration),
+    ]
+    if max_retries != 1:
+        argv.extend(["-r", str(max_retries)])
+    if keep_segments:
+        argv.append("--keep-segments")
+    if frames is not None:
+        argv.extend(["--frames", str(frames)])
+    if regenerate_base:
+        argv.append("--regenerate-base")
+    if random_seed:
+        argv.append("--random-seed")
+    _append_upscale_invocation_args(
+        argv,
+        upscale=upscale,
+        upscale_model=upscale_model,
+        upscale_scale=upscale_scale,
+        realesrgan_bin=realesrgan_bin,
+        models_dir=models_dir,
+    )
+    argv.extend(["-o", str(output_path)])
+    return argv
+
+
 def format_argv_readable(argv: list[str]) -> str:
     """Format an argv as one ``argument: value`` pair per line."""
     if not argv:
@@ -201,7 +359,17 @@ def format_stored_commands(path: Path) -> str:
     if not command:
         return "No ltx-tui command metadata found in this file."
 
-    lines = [format_command_string_readable(command)]
+    lines: list[str] = []
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        argv = []
+
+    upscale_summary = format_upscale_summary(argv) if argv else None
+    if upscale_summary:
+        lines.extend((upscale_summary, ""))
+
+    lines.append(format_command_string_readable(command))
     segments = tags.get(GENERATE_COMMANDS_METADATA_KEY)
     if segments:
         lines.append("")
