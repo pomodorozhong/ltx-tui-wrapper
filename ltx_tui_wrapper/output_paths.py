@@ -26,6 +26,14 @@ def timestamped_output_path(output: str, when: datetime | None = None) -> str:
     return str(path.with_name(stamped))
 
 
+def missing_output_directory(output: str | Path) -> str | None:
+    """Return an error message when the output's parent directory is missing."""
+    parent = Path(output).expanduser().parent
+    if parent == Path(".") or parent.is_dir():
+        return None
+    return f"Output directory does not exist: {parent}"
+
+
 def _batch_timestamped_variants(base_output: Path) -> list[Path]:
     """Return batch-style timestamped files derived from *base_output*."""
     parent = base_output.parent

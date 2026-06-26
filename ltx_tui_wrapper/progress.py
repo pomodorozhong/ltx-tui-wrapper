@@ -68,6 +68,17 @@ def print_failure(summary: str, *, details: str | None = None) -> None:
         print(body, file=sys.stdout, flush=True)
 
 
+def abort_if_missing_output_directory(output: str) -> bool:
+    """Print a failure band and return True when the output directory is missing."""
+    from ltx_tui_wrapper.output_paths import missing_output_directory
+
+    message = missing_output_directory(output)
+    if message is None:
+        return False
+    print_failure(message)
+    return True
+
+
 def print_status_band(message: str, *, success: bool) -> None:
     """Print a three-line color band with *message* centered inside."""
     if not success:

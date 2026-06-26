@@ -12,6 +12,7 @@ from pathlib import Path
 from ltx_tui_wrapper.last_run import load_last_run
 from ltx_tui_wrapper.output_paths import timestamped_output_path
 from ltx_tui_wrapper.parsing import build_command_argv, format_command
+from ltx_tui_wrapper.progress import abort_if_missing_output_directory
 from ltx_tui_wrapper.retries import run_with_retries
 from ltx_tui_wrapper.runner import prevent_sleep
 from ltx_tui_wrapper.video_metadata import write_command_metadata
@@ -42,6 +43,9 @@ def run_batch(
         raise SystemExit(
             "No saved generate settings found. Run `ltx-tui` once and press Run first."
         )
+
+    if abort_if_missing_output_directory(base_options.output):
+        return 1
 
     failures = 0
     batch_started = time.perf_counter()

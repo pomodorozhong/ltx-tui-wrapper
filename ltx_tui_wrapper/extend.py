@@ -18,7 +18,11 @@ from ltx_tui_wrapper.last_run import load_last_run
 from ltx_tui_wrapper.options import GenerateOptions
 from ltx_tui_wrapper.output_paths import timestamped_output_path
 from ltx_tui_wrapper.parsing import build_command_argv, format_command
-from ltx_tui_wrapper.progress import print_failure, print_status_band
+from ltx_tui_wrapper.progress import (
+    abort_if_missing_output_directory,
+    print_failure,
+    print_status_band,
+)
 from ltx_tui_wrapper.retries import run_with_retries
 from ltx_tui_wrapper.runner import prevent_sleep
 from ltx_tui_wrapper.upscale import upscale_image
@@ -213,6 +217,9 @@ def extend_video(
             "No saved generate settings found. Run `ltx-tui` once and press Run first."
         )
 
+    if abort_if_missing_output_directory(base_options.output):
+        return 1
+
     if base_options.seed == -1:
         base_options = replace(
             base_options,
@@ -394,6 +401,9 @@ def run_extend_batch(
         raise SystemExit(
             "No saved generate settings found. Run `ltx-tui` once and press Run first."
         )
+
+    if abort_if_missing_output_directory(base_options.output):
+        return 1
 
     failures = 0
     batch_started = time.perf_counter()

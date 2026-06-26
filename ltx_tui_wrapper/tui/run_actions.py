@@ -10,6 +10,7 @@ from ltx_tui_wrapper.batch_cli import run_batch
 from ltx_tui_wrapper.extend import run_extend_batch
 from ltx_tui_wrapper.extend_from import run_extend_from_inputs
 from ltx_tui_wrapper.options import GenerateOptions
+from ltx_tui_wrapper.progress import abort_if_missing_output_directory
 from ltx_tui_wrapper.upscale import upscale_video
 
 
@@ -92,6 +93,9 @@ def register_run_executor(
 def _execute_generate(action: GenerateRun) -> int:
     from ltx_tui_wrapper.runner import execute_command
     from ltx_tui_wrapper.video_metadata import write_command_metadata
+
+    if abort_if_missing_output_directory(action.options.output):
+        return 1
 
     exit_code = execute_command(action.command)
     if exit_code == 0:
