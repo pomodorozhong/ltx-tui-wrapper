@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import shutil
 import subprocess
 import sys
@@ -16,6 +17,7 @@ from ltx_tui_wrapper.last_run import load_last_run
 from ltx_tui_wrapper.output_paths import latest_output_path
 from ltx_tui_wrapper.progress import print_failure, print_status_band
 from ltx_tui_wrapper.runner import prevent_sleep
+from ltx_tui_wrapper.video_metadata import METADATA_KEY, build_upscale_invocation_argv, write_metadata
 
 TARGET_WIDTH = 1920
 TARGET_HEIGHT = 1080
@@ -612,6 +614,12 @@ def upscale_video(
         print_failure("Video probe failed", details=str(exc))
         return 1
 
+    resolved_scale: int | None = None
+    if model is not None:
+        resolved_scale = (
+            scale if scale is not None else compute_ai_scale(info.width, info.height)
+        )
+
     print(
         f"Source: {info.width}×{info.height} @ {info.fps:.3f} fps, "
         f"{info.duration:.2f}s, audio={'yes' if info.has_audio else 'no'}.",
@@ -657,6 +665,23 @@ def upscale_video(
             f"Upscaled video ready: {out_path} in {format_elapsed(elapsed)}.",
             flush=True,
         )
+
+    write_metadata(
+        out_path,
+        {
+            METADATA_KEY: shlex.join(
+                build_upscale_invocation_argv(
+                    input_path=in_path,
+                    output_path=out_path,
+                    model=model,
+                    scale=resolved_scale,
+                    realesrgan_bin=realesrgan_bin,
+                    models_dir=models_dir,
+                    keep_frames=keep_frames,
+                )
+            ),
+        },
+    )
 
     print_status_band(
         f"Upscaled to {TARGET_WIDTH}×{TARGET_HEIGHT} in {format_elapsed(elapsed)}.",

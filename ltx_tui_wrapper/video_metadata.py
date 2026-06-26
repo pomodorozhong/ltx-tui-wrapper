@@ -12,7 +12,10 @@ from pathlib import Path
 METADATA_KEY = "ltx_tui_command"
 GENERATE_COMMANDS_METADATA_KEY = "ltx_tui_generate_commands"
 EXTEND_PROGRAMS = frozenset({"ltx-tui-extend", "ltx-tui-extend-from"})
+UPSCALE_PROGRAMS = frozenset({"ltx-tui-upscale"})
 DEFAULT_UPSCALE_MODEL = "realesrgan-x4plus"
+DEFAULT_AUTO_UPSCALE_SCALE = 4
+LANCZOS_UPSCALE_MODEL = "lanczos"
 
 
 def current_invocation() -> list[str]:
@@ -184,17 +187,31 @@ def _optional_int(value: str | None) -> int | None:
 
 def format_upscale_summary(argv: list[str]) -> str | None:
     """Return a readable AI-upscale summary for extend / extend-from commands."""
-    if not argv or argv[0] not in EXTEND_PROGRAMS:
+    if not argv:
         return None
 
-    settings = parse_upscale_from_argv(argv)
-    if not settings["enabled"]:
-        return "AI upscale between segments: no"
+    if argv[0] in EXTEND_PROGRAMS:
+        settings = parse_upscale_from_argv(argv)
+        if not settings["enabled"]:
+            return "AI upscale between segments: no"
 
-    lines = ["AI upscale between segments: yes", f"model: {settings['model']}"]
-    if settings["scale"] is not None:
-        lines.append(f"scale: {settings['scale']}")
-    return "\n".join(lines)
+        lines = ["AI upscale between segments: yes", f"model: {settings['model']}"]
+        if settings["scale"] is not None:
+            lines.append(f"scale: {settings['scale']}")
+        return "\n".join(lines)
+
+    if argv[0] in UPSCALE_PROGRAMS:
+        model = _argv_flag_value(argv, "--model") or LANCZOS_UPSCALE_MODEL
+        if model == LANCZOS_UPSCALE_MODEL:
+            return "Upscale method: Lanczos (FFmpeg)"
+
+        lines = ["Upscale method: Real-ESRGAN", f"model: {model}"]
+        scale = _optional_int(_argv_flag_value(argv, "--scale"))
+        if scale is not None:
+            lines.append(f"scale: {scale}")
+        return "\n".join(lines)
+
+    return None
 
 
 def _append_upscale_invocation_args(
@@ -206,12 +223,18 @@ def _append_upscale_invocation_args(
     realesrgan_bin: str | None,
     models_dir: str | None,
 ) -> None:
-    if upscale:
-        argv.append("--upscale")
-    if upscale_model != DEFAULT_UPSCALE_MODEL:
-        argv.extend(["--upscale-model", upscale_model])
-    if upscale_scale is not None:
-        argv.extend(["--upscale-scale", str(upscale_scale)])
+    argv.append("--upscale" if upscale else "--no-upscale")
+    argv.extend(["--upscale-model", upscale_model])
+    argv.extend(
+        [
+            "--upscale-scale",
+            str(
+                upscale_scale
+                if upscale_scale is not None
+                else DEFAULT_AUTO_UPSCALE_SCALE
+            ),
+        ]
+    )
     if realesrgan_bin:
         argv.extend(["--realesrgan-bin", realesrgan_bin])
     if models_dir:
@@ -233,10 +256,8 @@ def build_extend_invocation_argv(
 ) -> list[str]:
     """Build the ``ltx-tui-extend`` argv stored in extended video metadata."""
     argv = ["ltx-tui-extend", "-l", format_duration_for_invocation(target_duration)]
-    if max_retries != 1:
-        argv.extend(["-r", str(max_retries)])
-    if not timestamp:
-        argv.append("--no-timestamp")
+    argv.extend(["-r", str(max_retries)])
+    argv.append("--timestamp" if timestamp else "--no-timestamp")
     if keep_segments:
         argv.append("--keep-segments")
     _append_upscale_invocation_args(
@@ -275,8 +296,7 @@ def build_extend_from_invocation_argv(
         "-l",
         format_duration_for_invocation(target_duration),
     ]
-    if max_retries != 1:
-        argv.extend(["-r", str(max_retries)])
+    argv.extend(["-r", str(max_retries)])
     if keep_segments:
         argv.append("--keep-segments")
     if frames is not None:
@@ -294,6 +314,41 @@ def build_extend_from_invocation_argv(
         models_dir=models_dir,
     )
     argv.extend(["-o", str(output_path)])
+    return argv
+
+
+def build_upscale_invocation_argv(
+    *,
+    input_path: Path,
+    output_path: Path,
+    model: str | None = None,
+    scale: int | None = None,
+    realesrgan_bin: str | None = None,
+    models_dir: str | None = None,
+    keep_frames: bool = False,
+) -> list[str]:
+    """Build the ``ltx-tui-upscale`` argv stored in upscaled video metadata."""
+    argv = [
+        "ltx-tui-upscale",
+        "-i",
+        str(input_path),
+        "-o",
+        str(output_path),
+        "--model",
+        model if model is not None else LANCZOS_UPSCALE_MODEL,
+    ]
+    if model is not None:
+        argv.extend(
+            [
+                "--scale",
+                str(scale if scale is not None else DEFAULT_AUTO_UPSCALE_SCALE),
+            ]
+        )
+    if realesrgan_bin:
+        argv.extend(["--realesrgan-bin", realesrgan_bin])
+    if models_dir:
+        argv.extend(["--models-dir", models_dir])
+    argv.append("--keep-frames" if keep_frames else "--no-keep-frames")
     return argv
 
 
